@@ -13948,6 +13948,216 @@ async function executeReloginBoundEmail(state = {}) {
   });
 }
 
+function validateHotmailSub2ApiLoginImportState(state = {}, account = null) {
+  if (!account) {
+    throw new Error('未找到对应的 Hotmail 账号。');
+  }
+  if (!account.used) {
+    throw new Error('只有已用 Hotmail 账号可以执行登录并导入。');
+  }
+  if (!String(account.email || '').trim()) {
+    throw new Error('目标 Hotmail 账号缺少邮箱地址。');
+  }
+  if (!String(account.password || '')) {
+    throw new Error(`Hotmail 账号 ${account.email || account.id} 没有保存可用于 ChatGPT 登录的密码。`);
+  }
+  if (getPanelMode(state) !== 'sub2api') {
+    throw new Error('请先将“导出至”切换为 SUB2API。');
+  }
+  if (!String(state.sub2apiUrl || '').trim()) {
+    throw new Error('请先填写 SUB2API URL。');
+  }
+  if (!String(state.sub2apiEmail || '').trim()) {
+    throw new Error('请先填写 SUB2API 登录邮箱。');
+  }
+  if (!String(state.sub2apiPassword || '')) {
+    throw new Error('请先填写 SUB2API 登录密码。');
+  }
+}
+
+function isChatGptSessionPageUrl(rawUrl = '') {
+  try {
+    const parsed = new URL(String(rawUrl || ''));
+    const host = String(parsed.hostname || '').trim().toLowerCase();
+    if (!['chatgpt.com', 'www.chatgpt.com', 'chat.openai.com'].includes(host)) {
+      return false;
+    }
+    const path = String(parsed.pathname || '');
+    return !/^\/(?:auth|log-in|create-account|email-verification|phone-verification|add-phone)(?:[/?#]|$)/i.test(path);
+  } catch {
+    return false;
+  }
+}
+
+async function waitForChatGptSessionPage(tabId, options = {}) {
+  const timeoutMs = Math.max(1000, Math.floor(Number(options.timeoutMs) || 90000));
+  const retryDelayMs = Math.max(250, Math.floor(Number(options.retryDelayMs) || 700));
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    throwIfStopped();
+    const tab = await chrome.tabs.get(tabId).catch(() => null);
+    if (!tab) {
+      throw new Error('ChatGPT 登录标签页已关闭，无法继续导入。');
+    }
+    if (isChatGptSessionPageUrl(tab.url)) {
+      return tab;
+    }
+    await sleepWithStop(retryDelayMs);
+  }
+  throw new Error('登录后未能进入 ChatGPT 会话页，请确认账号已登录成功。');
+}
+
+async function ensureChatGptSessionTabForImport(tabId) {
+  let tab = await chrome.tabs.get(tabId).catch(() => null);
+  if (!tab?.id) {
+    throw new Error('ChatGPT 登录标签页已关闭，无法继续导入。');
+  }
+  if (!isChatGptSessionPageUrl(tab.url)) {
+    await chrome.tabs.update(tab.id, { url: 'https://chatgpt.com/', active: true });
+    tab = await waitForChatGptSessionPage(tab.id, { timeoutMs: 90000 });
+  }
+  await waitForTabCompleteUntilStopped(tab.id, { timeoutMs: 45000 }).catch(() => tab);
+  await registerTab('plus-checkout', tab.id);
+  await setState({ plusCheckoutTabId: tab.id });
+  return tab;
+}
+
+async function runLoginImportVerificationStep(stateOverride = {}) {
+  const previousState = await getState();
+  await setState({
+    plusModeEnabled: true,
+    plusAccountAccessStrategy: PLUS_ACCOUNT_ACCESS_STRATEGY_OAUTH,
+  });
+  try {
+    const verificationState = await getState();
+    const verificationStep = getStepIdByNodeIdForState('fetch-login-code', verificationState) || 8;
+    await step8Executor.executeStep8({
+      ...verificationState,
+      ...stateOverride,
+      nodeId: 'fetch-login-code',
+      visibleStep: verificationStep,
+    });
+  } catch (err) {
+    const message = String(err?.message || '');
+    if (/back\/forward cache|message channel closed|Receiving end does not exist|port closed/i.test(message)) {
+      const tabId = await getTabId('signup-page');
+      if (tabId) {
+        const tab = await chrome.tabs.get(tabId).catch(() => null);
+        if (tab && isChatGptSessionPageUrl(tab.url)) {
+          await addLog('登录并导入：验证码已提交，页面已跳转到 ChatGPT 会话页。', 'info');
+          return;
+        }
+      }
+      await addLog('登录并导入：验证码提交后页面连接中断，但未检测到登录成功，将继续尝试导入。', 'warn');
+      return;
+    }
+    throw err;
+  } finally {
+    await setState({
+      plusModeEnabled: previousState.plusModeEnabled,
+      plusAccountAccessStrategy: previousState.plusAccountAccessStrategy,
+    });
+  }
+}
+
+async function runHotmailChatGptLogin(account) {
+  await addLog(`登录并导入：正在打开 ChatGPT 登录页，账号 ${account.email}。`, 'info');
+  const tabId = await reuseOrCreateTab('signup-page', 'https://chatgpt.com/auth/login', { forceNew: true });
+  await waitForTabCompleteUntilStopped(tabId, { timeoutMs: 45000 }).catch(() => null);
+  await ensureContentScriptReadyOnTabUntilStopped('signup-page', tabId, {
+    inject: SIGNUP_PAGE_INJECT_FILES,
+    injectSource: 'signup-page',
+    timeoutMs: 45000,
+    logMessage: '登录并导入：ChatGPT 登录页内容脚本未就绪，正在等待页面恢复...',
+  });
+
+  const loginPayload = {
+    email: account.email,
+    accountIdentifier: account.email,
+    loginIdentifierType: 'email',
+    password: account.password,
+    visibleStep: 7,
+  };
+  const loginResult = await sendToContentScriptResilient('signup-page', {
+    type: 'EXECUTE_NODE',
+    nodeId: 'oauth-login',
+    step: 7,
+    source: 'background',
+    payload: loginPayload,
+  }, {
+    timeoutMs: 180000,
+    responseTimeoutMs: 180000,
+    retryDelayMs: 700,
+    logMessage: '登录并导入：认证页正在切换，等待页面重新就绪后继续登录...',
+    logStep: 7,
+    logStepKey: 'oauth-login',
+  });
+  if (loginResult?.error) {
+    throw new Error(loginResult.error);
+  }
+  if (!isStep6SuccessResult(loginResult)) {
+    throw new Error(loginResult?.message || 'ChatGPT 登录页未返回可识别的登录结果。');
+  }
+
+  if (!loginResult.directOAuthConsentPage && !loginResult.addEmailPage) {
+    const alreadyOnSessionPage = loginResult.url && isChatGptSessionPageUrl(loginResult.url);
+    if (!alreadyOnSessionPage) {
+      await runLoginImportVerificationStep();
+    }
+  }
+
+  await ensureChatGptSessionTabForImport(tabId);
+  return tabId;
+}
+
+async function loginHotmailAndImportSub2Api(accountId) {
+  const state = await getState();
+  const account = findHotmailAccount(normalizeHotmailAccounts(state.hotmailAccounts), accountId);
+  validateHotmailSub2ApiLoginImportState(state, account);
+
+  await addLog(`登录并导入：准备使用 Hotmail 已用账号 ${account.email} 重新登录 ChatGPT。`, 'info');
+  await setCurrentHotmailAccount(account.id, { markUsed: false, syncEmail: true });
+  await setPasswordState(account.password);
+  await setState({
+    accountIdentifierType: 'email',
+    accountIdentifier: account.email,
+    signupMethod: 'email',
+    resolvedSignupMethod: 'email',
+    mailProvider: HOTMAIL_PROVIDER,
+    panelMode: 'sub2api',
+    plusModeEnabled: true,
+    plusAccountAccessStrategy: PLUS_ACCOUNT_ACCESS_STRATEGY_SUB2API_CODEX_SESSION,
+    step8VerificationTargetEmail: account.email,
+    loginVerificationRequestedAt: null,
+    lastLoginCode: null,
+  });
+
+  await step1Executor.clearOpenAiCookiesBeforeStep1();
+  const loginTabId = await runHotmailChatGptLogin(account);
+  const sessionTab = await ensureChatGptSessionTabForImport(loginTabId);
+  await addLog('登录并导入：ChatGPT 登录完成，正在读取当前会话并导入 SUB2API。', 'info');
+
+  try {
+    await sub2ApiSessionImportExecutor.executeSub2ApiSessionImport({
+      ...(await getState()),
+      nodeId: 'sub2api-session-import',
+      visibleStep: 10,
+      plusCheckoutTabId: sessionTab.id,
+    });
+  } catch (err) {
+    const message = String(err?.message || '');
+    if (/未读取到有效的.*ChatGPT.*会话|未返回可用.*accessToken|请先登录.*ChatGPT|当前.*标签页不在.*ChatGPT/i.test(message)) {
+      throw new Error(`ACCOUNT_DELETED::${message}`);
+    }
+    throw err;
+  }
+
+  return {
+    account,
+    imported: true,
+  };
+}
+
 const stepExecutorsByKey = {
   'open-chatgpt': () => step1Executor.executeStep1(),
   'submit-signup-email': (state) => step2Executor.executeStep2(state),
@@ -14063,6 +14273,7 @@ const messageRouter = self.MultiPageBackgroundMessageRouter?.createMessageRouter
   runIpProxyAutoSync: null,
   listIcloudAliases,
   listLuckmailPurchasesForManagement,
+  loginHotmailAndImportSub2Api,
   markCurrentCustomEmailPoolEntryUsed,
   markCurrentRegistrationAccountUsed,
   getCurrentMail2925Account,
@@ -14931,6 +15142,7 @@ async function ensureStep8VerificationPageReady(options = {}) {
   if (
     pageState.state === 'verification_page'
     || pageState.state === 'oauth_consent_page'
+    || pageState.state === 'logged_in_home'
     || (options.allowPhoneVerificationPage && pageState.state === 'phone_verification_page')
     || (options.allowAddEmailPage && pageState.state === 'add_email_page')
   ) {

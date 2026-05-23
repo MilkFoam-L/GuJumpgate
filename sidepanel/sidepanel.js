@@ -361,6 +361,8 @@ const inputHotmailEmail = document.getElementById('input-hotmail-email');
 const inputHotmailClientId = document.getElementById('input-hotmail-client-id');
 const inputHotmailPassword = document.getElementById('input-hotmail-password');
 const inputHotmailRefreshToken = document.getElementById('input-hotmail-refresh-token');
+const rowHotmailBatchEmailList = document.getElementById('row-hotmail-batch-email-list');
+const inputHotmailBatchEmailList = document.getElementById('input-hotmail-batch-email-list');
 const inputHotmailImport = document.getElementById('input-hotmail-import');
 const inputHotmailSearch = document.getElementById('input-hotmail-search');
 const selectHotmailFilter = document.getElementById('select-hotmail-filter');
@@ -369,6 +371,7 @@ const btnImportHotmailAccounts = document.getElementById('btn-import-hotmail-acc
 const btnToggleHotmailForm = document.getElementById('btn-toggle-hotmail-form');
 const btnHotmailUsageGuide = document.getElementById('btn-hotmail-usage-guide');
 const btnClearUsedHotmailAccounts = document.getElementById('btn-clear-used-hotmail-accounts');
+const btnBatchLoginImportSub2Api = document.getElementById('btn-batch-login-import-sub2api');
 const btnDeleteAllHotmailAccounts = document.getElementById('btn-delete-all-hotmail-accounts');
 const btnToggleHotmailList = document.getElementById('btn-toggle-hotmail-list');
 const hotmailFormShell = document.getElementById('hotmail-form-shell');
@@ -12590,6 +12593,141 @@ async function copyTextToClipboard(text) {
   await navigator.clipboard.writeText(value);
 }
 
+function validateSub2ApiLoginImportConfig() {
+  const fail = (input, message) => {
+    input?.classList?.add('is-invalid');
+    input?.focus?.();
+    return { valid: false, message };
+  };
+  [inputSub2ApiUrl, inputSub2ApiEmail, inputSub2ApiPassword, inputSub2ApiGroup].forEach((input) => {
+    input?.classList?.remove('is-invalid');
+  });
+
+  if (getSelectedPanelMode() !== 'sub2api') {
+    selectPanelMode?.focus?.();
+    return { valid: false, message: '请先将“导出至”切换为 SUB2API。' };
+  }
+  if (!String(inputSub2ApiUrl?.value || '').trim()) {
+    return fail(inputSub2ApiUrl, '请先填写 SUB2API URL。');
+  }
+  if (!String(inputSub2ApiEmail?.value || '').trim()) {
+    return fail(inputSub2ApiEmail, '请先填写 SUB2API 登录邮箱。');
+  }
+  if (!String(inputSub2ApiPassword?.value || '')) {
+    return fail(inputSub2ApiPassword, '请先填写 SUB2API 登录密码。');
+  }
+  if (!getSelectedSub2ApiGroupName()) {
+    return fail(inputSub2ApiGroup, '请先选择或填写 SUB2API 分组。');
+  }
+  return { valid: true };
+}
+
+async function loginAndImportHotmailAccountToSub2Api(accountId) {
+  const validation = validateSub2ApiLoginImportConfig();
+  if (!validation.valid) {
+    throw new Error(validation.message || 'SUB2API 配置不完整。');
+  }
+  if (!(await maybeTakeoverAutoRun('登录并导入 SUB2API'))) {
+    return null;
+  }
+  await persistCurrentSettingsForAction();
+  showToast('开始自动登录该账号并导入 SUB2API，请查看执行日志。', 'info', 2400);
+  const response = await chrome.runtime.sendMessage({
+    type: 'LOGIN_HOTMAIL_AND_IMPORT_SUB2API',
+    source: 'sidepanel',
+    payload: { accountId },
+  });
+  if (response?.error) {
+    throw new Error(response.error);
+  }
+  showToast('登录并导入 SUB2API 已完成。', 'success', 2600);
+  return response || null;
+}
+
+async function batchLoginAndImportHotmailAccountsToSub2Api() {
+  const validation = validateSub2ApiLoginImportConfig();
+  if (!validation.valid) {
+    showToast(validation.message || 'SUB2API 配置不完整。', 'warn');
+    return;
+  }
+
+  const rawText = String(inputHotmailBatchEmailList?.value || '').trim();
+  if (!rawText) {
+    showToast('请先在“批量邮箱”文本框中粘贴要处理的邮箱列表（每行一个）。', 'warn');
+    inputHotmailBatchEmailList?.focus?.();
+    return;
+  }
+  const targetEmails = rawText.split(/[\r\n]+/).map((l) => l.trim()).filter(Boolean);
+  const targetEmailSet = new Set(targetEmails.map((e) => e.toLowerCase()));
+
+  const allHotmailAccounts = getHotmailAccounts();
+  const matchedAccounts = allHotmailAccounts.filter((a) => {
+    if (!a.email || !a.password) return false;
+    return targetEmailSet.has(String(a.email).trim().toLowerCase());
+  });
+
+  if (!matchedAccounts.length) {
+    showToast('批量邮箱列表中的邮箱未匹配到任何 Hotmail 账号（需要有邮箱和密码）。', 'warn');
+    return;
+  }
+
+  const notFound = targetEmails.filter((e) => !allHotmailAccounts.some((a) => String(a.email || '').trim().toLowerCase() === e.toLowerCase()));
+  if (notFound.length) {
+    showToast(`以下邮箱未在 Hotmail 账号池中找到：${notFound.join('、')}`, 'warn', 4000);
+  }
+
+  if (!(await maybeTakeoverAutoRun('批量登录并导入 SUB2API'))) {
+    return;
+  }
+  await persistCurrentSettingsForAction();
+  let successCount = 0;
+  let deletedCount = 0;
+  let failedCount = 0;
+  const failedList = [];
+  const deletedList = [];
+  showToast(`开始批量登录并导入 ${matchedAccounts.length} 个账号，请查看执行日志。`, 'info', 3200);
+  for (let i = 0; i < matchedAccounts.length; i++) {
+    const account = matchedAccounts[i];
+    try {
+      const response = await chrome.runtime.sendMessage({
+        type: 'LOGIN_HOTMAIL_AND_IMPORT_SUB2API',
+        source: 'sidepanel',
+        payload: { accountId: account.id },
+      });
+      if (response?.error) {
+        const msg = String(response.error || '');
+        if (/ACCOUNT_DELETED/i.test(msg)) {
+          deletedCount++;
+          deletedList.push(account.email);
+        } else {
+          throw new Error(response.error);
+        }
+      } else {
+        successCount++;
+      }
+    } catch (err) {
+      const msg = String(err?.message || '');
+      if (/ACCOUNT_DELETED|账号.*已删除|账号.*不存在/i.test(msg)) {
+        deletedCount++;
+        deletedList.push(account.email);
+      } else {
+        failedCount++;
+        failedList.push(`${account.email}: ${msg}`);
+      }
+    }
+  }
+  let summary = `批量完成：成功 ${successCount}`;
+  if (deletedCount > 0) summary += `，已删除/无效 ${deletedCount}`;
+  if (failedCount > 0) summary += `，失败 ${failedCount}`;
+  showToast(summary, failedCount > 0 ? 'warn' : 'success', 5000);
+  if (deletedList.length) {
+    showToast(`已删除/无效账号：${deletedList.join('、')}`, 'info', 4000);
+  }
+  if (failedList.length) {
+    showToast(`失败账号：${failedList.join('；')}`, 'error', 5000);
+  }
+}
+
 const hotmailManager = window.SidepanelHotmailManager?.createHotmailManager({
   state: {
     getLatestState: () => latestState,
@@ -12598,6 +12736,7 @@ const hotmailManager = window.SidepanelHotmailManager?.createHotmailManager({
   dom: {
     btnAddHotmailAccount,
     btnClearUsedHotmailAccounts,
+    btnBatchLoginImportSub2Api,
     btnDeleteAllHotmailAccounts,
     btnHotmailUsageGuide,
     btnImportHotmailAccounts,
@@ -12621,6 +12760,8 @@ const hotmailManager = window.SidepanelHotmailManager?.createHotmailManager({
     escapeHtml,
     getCurrentHotmailEmail,
     getHotmailAccounts,
+    loginAndImportHotmailAccountToSub2Api,
+    batchLoginAndImportHotmailAccountsToSub2Api,
     openConfirmModal,
     showToast,
   },

@@ -785,6 +785,10 @@
         await completeStep8WhenAuthAlreadyOnOauthConsent(visibleStep, { nodeId: state?.nodeId });
         return;
       }
+      if (pageState?.state === 'logged_in_home') {
+        await completeStep8WhenAuthAlreadyOnOauthConsent(visibleStep, { nodeId: state?.nodeId });
+        return;
+      }
       const phoneLoginCodeMode = isPhoneLoginCodeMode(state);
       if (phoneLoginCodeMode) {
         if (pageState?.state === 'phone_verification_page') {

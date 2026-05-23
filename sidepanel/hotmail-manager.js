@@ -280,6 +280,7 @@
             <button class="btn btn-outline btn-sm" type="button" data-account-action="toggle-used" data-account-id="${helpers.escapeHtml(account.id)}">${account.used ? '标记未用' : '标记已用'}</button>
             <button class="btn btn-primary btn-sm" type="button" data-account-action="verify" data-account-id="${helpers.escapeHtml(account.id)}">校验</button>
             <button class="btn btn-outline btn-sm" type="button" data-account-action="test" data-account-id="${helpers.escapeHtml(account.id)}">复制最新验证码</button>
+            ${account.used ? `<button class="btn btn-outline btn-sm" type="button" data-account-action="login-import-sub2api" data-account-id="${helpers.escapeHtml(account.id)}">登录并导入</button>` : ''}
             <button class="btn btn-ghost btn-sm" type="button" data-account-action="delete" data-account-id="${helpers.escapeHtml(account.id)}">删除</button>
           </div>
         </div>
@@ -449,6 +450,7 @@
 
       actionInFlight = true;
       actionButton.disabled = true;
+      const originalActionButtonText = actionButton.textContent;
 
       try {
         if (action === 'copy-email') {
@@ -505,6 +507,17 @@
           } else {
             helpers.showToast('当前没有可读取的最新邮件。', 'warn', 2600);
           }
+        } else if (action === 'login-import-sub2api') {
+          if (!targetAccount) throw new Error('未找到目标 Hotmail 账号。');
+          if (!targetAccount.used) throw new Error('只有已用账号可以执行登录并导入。');
+          if (typeof helpers.loginAndImportHotmailAccountToSub2Api !== 'function') {
+            throw new Error('登录并导入能力未接入，请刷新扩展后重试。');
+          }
+          actionButton.textContent = '登录中...';
+          const result = await helpers.loginAndImportHotmailAccountToSub2Api(accountId);
+          if (result?.account) {
+            applyHotmailAccountMutation(result.account, { preserveCurrentSelection: true });
+          }
         } else if (action === 'delete') {
           const confirmed = await helpers.openConfirmModal({
             title: '删除账号',
@@ -528,6 +541,7 @@
       } finally {
         actionInFlight = false;
         actionButton.disabled = false;
+        actionButton.textContent = originalActionButtonText;
       }
     }
 
@@ -564,6 +578,24 @@
         } finally {
           actionInFlight = false;
           updateHotmailListViewport();
+        }
+      });
+
+      dom.btnBatchLoginImportSub2Api?.addEventListener('click', async () => {
+        if (actionInFlight) return;
+        if (typeof helpers.batchLoginAndImportHotmailAccountsToSub2Api !== 'function') {
+          helpers.showToast('批量登录并导入能力未接入，请刷新扩展后重试。', 'error');
+          return;
+        }
+        actionInFlight = true;
+        dom.btnBatchLoginImportSub2Api.disabled = true;
+        try {
+          await helpers.batchLoginAndImportHotmailAccountsToSub2Api();
+        } catch (err) {
+          helpers.showToast(err.message, 'error');
+        } finally {
+          actionInFlight = false;
+          dom.btnBatchLoginImportSub2Api.disabled = false;
         }
       });
 

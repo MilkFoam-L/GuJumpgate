@@ -169,6 +169,7 @@
       setSignupPhoneState,
       setSignupPhoneStateSilently,
       setIcloudAliasPreservedState,
+      loginHotmailAndImportSub2Api,
       setIcloudAliasUsedState,
       setLuckmailPurchaseDisabledState,
       setLuckmailPurchasePreservedState,
@@ -1772,6 +1773,19 @@
 
         case 'TEST_HOTMAIL_ACCOUNT': {
           const result = await testHotmailAccountMailAccess(String(message.payload?.accountId || ''));
+          return { ok: true, ...result };
+        }
+
+        case 'LOGIN_HOTMAIL_AND_IMPORT_SUB2API': {
+          clearStopRequest();
+          if (message.source === 'sidepanel') {
+            await lockAutomationWindowFromMessage(message, sender);
+            await ensureManualInteractionAllowed('登录并导入 SUB2API');
+          }
+          if (typeof loginHotmailAndImportSub2Api !== 'function') {
+            throw new Error('登录并导入 SUB2API 能力未接入。');
+          }
+          const result = await loginHotmailAndImportSub2Api(String(message.payload?.accountId || ''));
           return { ok: true, ...result };
         }
 
