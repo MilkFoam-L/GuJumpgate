@@ -280,7 +280,7 @@
             <button class="btn btn-outline btn-sm" type="button" data-account-action="toggle-used" data-account-id="${helpers.escapeHtml(account.id)}">${account.used ? '标记未用' : '标记已用'}</button>
             <button class="btn btn-primary btn-sm" type="button" data-account-action="verify" data-account-id="${helpers.escapeHtml(account.id)}">校验</button>
             <button class="btn btn-outline btn-sm" type="button" data-account-action="test" data-account-id="${helpers.escapeHtml(account.id)}">复制最新验证码</button>
-            ${account.used ? `<button class="btn btn-outline btn-sm" type="button" data-account-action="login-import-sub2api" data-account-id="${helpers.escapeHtml(account.id)}">登录并导入</button>` : ''}
+            ${account.used ? `<button class="btn btn-outline btn-sm" type="button" data-account-action="login-import-sub2api" data-account-id="${helpers.escapeHtml(account.id)}">重新登录并导入</button>` : ''}
             <button class="btn btn-ghost btn-sm" type="button" data-account-action="delete" data-account-id="${helpers.escapeHtml(account.id)}">删除</button>
           </div>
         </div>
@@ -509,11 +509,11 @@
           }
         } else if (action === 'login-import-sub2api') {
           if (!targetAccount) throw new Error('未找到目标 Hotmail 账号。');
-          if (!targetAccount.used) throw new Error('只有已用账号可以执行登录并导入。');
+          if (!targetAccount.used) throw new Error('只有已用账号可以执行重新登录导入。');
           if (typeof helpers.loginAndImportHotmailAccountToSub2Api !== 'function') {
-            throw new Error('登录并导入能力未接入，请刷新扩展后重试。');
+            throw new Error('重新登录导入能力未接入，请刷新扩展后重试。');
           }
-          actionButton.textContent = '登录中...';
+          actionButton.textContent = '重新登录中...';
           const result = await helpers.loginAndImportHotmailAccountToSub2Api(accountId);
           if (result?.account) {
             applyHotmailAccountMutation(result.account, { preserveCurrentSelection: true });
@@ -584,7 +584,7 @@
       dom.btnBatchLoginImportSub2Api?.addEventListener('click', async () => {
         if (actionInFlight) return;
         if (typeof helpers.batchLoginAndImportHotmailAccountsToSub2Api !== 'function') {
-          helpers.showToast('批量登录并导入能力未接入，请刷新扩展后重试。', 'error');
+          helpers.showToast('批量重新登录导入能力未接入，请刷新扩展后重试。', 'error');
           return;
         }
         actionInFlight = true;

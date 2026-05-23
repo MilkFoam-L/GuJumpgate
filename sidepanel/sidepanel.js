@@ -12627,11 +12627,11 @@ async function loginAndImportHotmailAccountToSub2Api(accountId) {
   if (!validation.valid) {
     throw new Error(validation.message || 'SUB2API 配置不完整。');
   }
-  if (!(await maybeTakeoverAutoRun('登录并导入 SUB2API'))) {
+  if (!(await maybeTakeoverAutoRun('重新登录已注册 Plus 账号到 SUB2API'))) {
     return null;
   }
   await persistCurrentSettingsForAction();
-  showToast('开始自动登录该账号并导入 SUB2API，请查看执行日志。', 'info', 2400);
+  showToast('开始重新登录该 Plus 账号并导入 SUB2API，请查看执行日志。', 'info', 2400);
   const response = await chrome.runtime.sendMessage({
     type: 'LOGIN_HOTMAIL_AND_IMPORT_SUB2API',
     source: 'sidepanel',
@@ -12640,7 +12640,7 @@ async function loginAndImportHotmailAccountToSub2Api(accountId) {
   if (response?.error) {
     throw new Error(response.error);
   }
-  showToast('登录并导入 SUB2API 已完成。', 'success', 2600);
+  showToast('Plus 账号重新登录导入 SUB2API 已完成。', 'success', 2600);
   return response || null;
 }
 
@@ -12653,7 +12653,7 @@ async function batchLoginAndImportHotmailAccountsToSub2Api() {
 
   const rawText = String(inputHotmailBatchEmailList?.value || '').trim();
   if (!rawText) {
-    showToast('请先在“批量邮箱”文本框中粘贴要处理的邮箱列表（每行一个）。', 'warn');
+    showToast('请先在“重新登录账号”文本框中粘贴要重新登录导入的邮箱列表（每行一个）。', 'warn');
     inputHotmailBatchEmailList?.focus?.();
     return;
   }
@@ -12667,7 +12667,7 @@ async function batchLoginAndImportHotmailAccountsToSub2Api() {
   });
 
   if (!matchedAccounts.length) {
-    showToast('批量邮箱列表中的邮箱未匹配到任何 Hotmail 账号（需要有邮箱和密码）。', 'warn');
+    showToast('重新登录账号列表中的邮箱未匹配到任何可登录的 Hotmail 账号（需要有邮箱和密码）。', 'warn');
     return;
   }
 
@@ -12676,7 +12676,7 @@ async function batchLoginAndImportHotmailAccountsToSub2Api() {
     showToast(`以下邮箱未在 Hotmail 账号池中找到：${notFound.join('、')}`, 'warn', 4000);
   }
 
-  if (!(await maybeTakeoverAutoRun('批量登录并导入 SUB2API'))) {
+  if (!(await maybeTakeoverAutoRun('批量重新登录已注册 Plus 账号到 SUB2API'))) {
     return;
   }
   await persistCurrentSettingsForAction();
@@ -12685,7 +12685,7 @@ async function batchLoginAndImportHotmailAccountsToSub2Api() {
   let failedCount = 0;
   const failedList = [];
   const deletedList = [];
-  showToast(`开始批量登录并导入 ${matchedAccounts.length} 个账号，请查看执行日志。`, 'info', 3200);
+  showToast(`开始批量重新登录导入 ${matchedAccounts.length} 个 Plus 账号，请查看执行日志。`, 'info', 3200);
   for (let i = 0; i < matchedAccounts.length; i++) {
     const account = matchedAccounts[i];
     try {
