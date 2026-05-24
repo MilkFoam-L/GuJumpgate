@@ -13624,9 +13624,21 @@ btnSaveSettings.addEventListener('click', async () => {
   await saveSettings({ silent: false }).catch(() => { });
 });
 
-btnStop.addEventListener('click', async () => {
+btnStop.addEventListener('click', async (event) => {
+  if (event?.isTrusted === false) {
+    console.warn('[Sidepanel] 已忽略非用户触发的停止按钮点击。');
+    showToast('已忽略非用户触发的停止请求', 'warn', 1800);
+    return;
+  }
   btnStop.disabled = true;
-  await chrome.runtime.sendMessage({ type: 'STOP_FLOW', source: 'sidepanel', payload: {} });
+  await chrome.runtime.sendMessage({
+    type: 'STOP_FLOW',
+    source: 'sidepanel',
+    payload: {
+      trustedClick: event?.isTrusted === true,
+      clickedAt: Date.now(),
+    },
+  });
   showToast(isAutoRunScheduledPhase() ? '正在取消倒计时计划...' : '正在停止当前流程...', 'warn', 2000);
 });
 
