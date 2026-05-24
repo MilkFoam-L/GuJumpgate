@@ -11329,6 +11329,23 @@ function buildAutoRunNodeIdleRestartError(nodeId, idleMs = AUTO_RUN_STEP_IDLE_LO
   return error;
 }
 
+function describeAutoRunNodeWaitState(state = {}, nodeId = '') {
+  const normalizedNodeId = String(nodeId || '').trim();
+  const nodeStatuses = state?.nodeStatuses && typeof state.nodeStatuses === 'object'
+    ? state.nodeStatuses
+    : {};
+  const runningNodes = getRunningNodeIds(nodeStatuses, state);
+  const currentNodeId = String(state?.currentNodeId || '').trim();
+  return [
+    `node=${normalizedNodeId || '(空)'}`,
+    `status=${String(nodeStatuses[normalizedNodeId] || '(空)').trim()}`,
+    `currentNode=${currentNodeId || '(空)'}`,
+    `runningNodes=${runningNodes.length ? runningNodes.join(',') : '(无)'}`,
+    `phase=${String(state?.autoRunPhase || '').trim() || '(空)'}`,
+    `manualPending=${Boolean(state?.plusManualConfirmationPending)}`,
+  ].join('；');
+}
+
 function isAutoRunStepIdleRestartError(error) {
   const message = String(typeof error === 'string' ? error : error?.message || '');
   return Boolean(error?.autoRunStepIdleRestart) || message.startsWith(AUTO_RUN_STEP_IDLE_RESTART_ERROR_PREFIX);
@@ -11373,6 +11390,14 @@ function startAutoRunNodeIdleLogWatchdog(nodeId, options = {}) {
         if (idleForMs >= idleTimeoutMs) {
           reject(buildAutoRunNodeIdleRestartError(normalizedNodeId, idleForMs));
           return;
+        }
+        if (idleForMs >= checkIntervalMs) {
+          const idleSeconds = Math.max(1, Math.round(idleForMs / 1000));
+          await addLog(
+            `自动运行诊断：节点 ${normalizedNodeId} 已 ${idleSeconds} 秒没有新日志；${describeAutoRunNodeWaitState(state, normalizedNodeId)}`,
+            'warn'
+          );
+          lastActivityAt = Date.now();
         }
       } catch (_err) {
         // Watchdog read failures should not break the real step; retry the check.

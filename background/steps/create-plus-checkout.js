@@ -1794,9 +1794,9 @@ function FindProxyForURL(url, host) {
 
     function startHostedCheckoutAutomation(tabId, completionPayload = {}) {
       if (!enableHostedCheckoutAutomation) {
-        return;
+        return Promise.resolve();
       }
-      void runHostedCheckoutAutomation(tabId, completionPayload)
+      return runHostedCheckoutAutomation(tabId, completionPayload)
         .catch(async (error) => {
           const message = error?.message || String(error || 'hosted checkout automation failed');
           if (isHostedCheckoutNonFreeTrialFailure(error)) {
@@ -2416,7 +2416,7 @@ function FindProxyForURL(url, host) {
 
         if (shouldWaitForHostedCheckoutSuccess(state, paymentMethod)) {
           await addLog('步骤 6：当前 hosted checkout 流程将等待支付成功页出现后，再继续 OAuth 流程。', 'info');
-          startHostedCheckoutAutomation(tabId, {
+          await startHostedCheckoutAutomation(tabId, {
             plusCheckoutCountry: result.country || 'DE',
             plusCheckoutCurrency: result.currency || 'EUR',
           });
