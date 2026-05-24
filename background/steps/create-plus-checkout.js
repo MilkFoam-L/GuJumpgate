@@ -1815,7 +1815,7 @@ function FindProxyForURL(url, host) {
             );
             if (shouldRetryNonFreeTrial && typeof failNodeFromBackground === 'function') {
               await failNodeFromBackground('plus-checkout-create', `PLUS_CHECKOUT_NON_FREE_TRIAL::${stopReason}`);
-              return;
+              throw new Error(`PLUS_CHECKOUT_NON_FREE_TRIAL::${stopReason}`);
             }
             if (typeof requestStop === 'function') {
               await requestStop({ logMessage: false });
