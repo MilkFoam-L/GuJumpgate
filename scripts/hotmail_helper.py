@@ -107,16 +107,16 @@ def resolve_server_config(argv=None, environ=None):
 
 def json_response(handler, status, payload):
     body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-    handler.send_response(status)
-    handler.send_header("Content-Type", "application/json; charset=utf-8")
-    handler.send_header("Content-Length", str(len(body)))
-    handler.send_header("Access-Control-Allow-Origin", "*")
-    handler.send_header("Access-Control-Allow-Headers", "Content-Type")
-    handler.send_header("Access-Control-Allow-Methods", "POST, OPTIONS")
     try:
+        handler.send_response(status)
+        handler.send_header("Content-Type", "application/json; charset=utf-8")
+        handler.send_header("Content-Length", str(len(body)))
+        handler.send_header("Access-Control-Allow-Origin", "*")
+        handler.send_header("Access-Control-Allow-Headers", "Content-Type")
+        handler.send_header("Access-Control-Allow-Methods", "POST, OPTIONS")
         handler.end_headers()
         handler.wfile.write(body)
-    except (BrokenPipeError, ConnectionResetError) as exc:
+    except (BrokenPipeError, ConnectionAbortedError, ConnectionResetError) as exc:
         log_info(f"response aborted by client status={status} detail={compact_text(exc)}")
 
 
