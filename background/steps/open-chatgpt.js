@@ -239,7 +239,7 @@
       await completeNodeFromBackground('open-chatgpt', {});
     }
 
-    return { executeStep1 };
+    return { clearOpenAiCookiesBeforeStep1, executeStep1 };
   }
 
   return { createStep1Executor };

@@ -4196,6 +4196,9 @@ function inspectLoginAuthState() {
   const phoneVerificationPage = isPhoneVerificationPageReady();
   const consentReady = isStep8Ready();
   const oauthConsentPage = isOAuthConsentPage();
+  const postVerificationState = typeof getStep4PostVerificationState === 'function'
+    ? getStep4PostVerificationState({ ignoreVerificationVisibility: true })
+    : null;
   const baseState = {
     state: 'unknown',
     url: location.href,
@@ -4228,6 +4231,14 @@ function inspectLoginAuthState() {
     return {
       ...baseState,
       state: 'login_timeout_error_page',
+    };
+  }
+
+  if (postVerificationState?.state === 'logged_in_home') {
+    return {
+      ...baseState,
+      state: 'logged_in_home',
+      url: postVerificationState.url || location.href,
     };
   }
 
@@ -4358,6 +4369,8 @@ function getLoginAuthStateLabel(snapshot) {
       return '手机号页';
     case 'add_email_page':
       return '添加邮箱页';
+    case 'logged_in_home':
+      return 'ChatGPT 已登录页';
     default:
       return '未知页面';
   }
@@ -5023,6 +5036,18 @@ async function waitForVerificationSubmitOutcome(step, timeout, options = {}) {
       return { invalidCode: true, errorText };
     }
 
+    if (step === 8) {
+      const postVerificationState = typeof getStep4PostVerificationState === 'function'
+        ? getStep4PostVerificationState({ ignoreVerificationVisibility: true })
+        : null;
+      if (postVerificationState?.state === 'logged_in_home') {
+        return {
+          success: true,
+          url: postVerificationState.url || location.href,
+        };
+      }
+    }
+
     if (step === 8 && isStep8Ready()) {
       return { success: true };
     }
@@ -5192,6 +5217,13 @@ async function fillVerificationCode(step, payload) {
     }
   }
   if (step === 8) {
+    const postVerificationState = typeof getStep4PostVerificationState === 'function'
+      ? getStep4PostVerificationState({ ignoreVerificationVisibility: true })
+      : null;
+    if (postVerificationState?.state === 'logged_in_home') {
+      log(`步骤 ${step}：检测到页面已进入 ChatGPT 已登录态，本次验证码提交按成功处理。`, 'ok');
+      return { success: true, assumed: true, alreadyAdvanced: true, url: postVerificationState.url || location.href };
+    }
     if (isStep8Ready()) {
       log(`步骤 ${step}：检测到页面已进入 OAuth 同意页，本次验证码提交按成功处理。`, 'ok');
       return { success: true, assumed: true, alreadyAdvanced: true };
@@ -5387,6 +5419,16 @@ async function resolveStep6PostSubmitSnapshot(snapshot, options = {}) {
     final = false,
     addPhoneMessage,
   } = options;
+
+  if (normalizedSnapshot.state === 'logged_in_home') {
+    return {
+      action: 'done',
+      result: createStep6SuccessResult(normalizedSnapshot, {
+        via: `${via}_logged_in_home`,
+        loginVerificationRequestedAt: null,
+      }),
+    };
+  }
 
   if (normalizedSnapshot.state === 'verification_page' || (allowPhoneVerificationPage && normalizedSnapshot.state === 'phone_verification_page')) {
     return {
@@ -6095,6 +6137,14 @@ async function step6_login(payload) {
   if (!email && !phoneNumber) throw new Error('登录时缺少邮箱地址或手机号。');
 
   const snapshot = normalizeStep6Snapshot(await waitForKnownLoginAuthState(15000));
+
+  if (snapshot.state === 'logged_in_home') {
+    log('检测到 ChatGPT 已登录态，登录阶段按成功处理。', 'ok', { step: visibleStep, stepKey: 'oauth-login' });
+    return createStep6SuccessResult(snapshot, {
+      via: 'already_logged_in_home',
+      loginVerificationRequestedAt: null,
+    });
+  }
 
   if (snapshot.state === 'verification_page' || snapshot.state === 'phone_verification_page') {
     log('认证页已在登录验证码页，开始确认页面是否稳定。', 'info', { step: visibleStep, stepKey: 'oauth-login' });
