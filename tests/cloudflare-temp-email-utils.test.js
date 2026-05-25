@@ -49,3 +49,21 @@ test('Cloudflare Temp Email reads nested content objects instead of stringifying
   assert.equal(messages[0].bodyPreview.includes('654321'), true);
   assert.equal(hotmailUtils.extractVerificationCodeFromMessage(messages[0]), '654321');
 });
+
+test('Hotmail Outlook plus aliases normalize to the base mailbox', () => {
+  assert.equal(
+    hotmailUtils.normalizeOutlookPlusAliasBaseEmail('BettieBaileybzf+PayPal3@outlook.com'),
+    'bettiebaileybzf@outlook.com'
+  );
+  assert.equal(
+    hotmailUtils.normalizeOutlookPlusAliasBaseEmail('charlottelegroskn+paypal2@hotmail.com'),
+    'charlottelegroskn@hotmail.com'
+  );
+  assert.equal(
+    hotmailUtils.isOutlookPlusAliasForEmail(
+      'CandelarioWuckertmmxbc+PayPal1@outlook.com',
+      'candelariowuckertmmxbc@outlook.com'
+    ),
+    true
+  );
+});

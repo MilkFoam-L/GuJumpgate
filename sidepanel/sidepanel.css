@@ -6,7 +6,10 @@
    ============================================================ */
 
 #ip-proxy-section,
-#phone-verification-section {
+#row-hosted-checkout-verification-url,
+#row-hosted-checkout-manual-fetch,
+#row-hosted-checkout-phone,
+.is-hidden-permanently {
   display: none !important;
 }
 
@@ -855,8 +858,17 @@ header {
 }
 
 
+.module-card .section-mini-header {
+  margin-bottom: 2px;
+}
+
+.module-card .section-mini-copy .data-value {
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .phone-verification-card {
-  margin-top: 10px;
+  margin-top: 0;
 }
 
 .phone-verification-header-actions {
@@ -1195,7 +1207,9 @@ header {
 }
 
 #row-codex2api-url .data-label,
-#row-codex2api-admin-key .data-label {
+#row-codex2api-admin-key .data-label,
+.grizzly-sms-api-row > .data-label,
+.grizzly-sms-params-row > .data-label {
   width: 76px;
 }
 
@@ -1203,6 +1217,32 @@ header {
   font-size: 10px;
   letter-spacing: 0.02em;
   text-transform: none;
+}
+
+.grizzly-sms-api-row > .data-label,
+.grizzly-sms-params-row > .data-label {
+  line-height: 1.15;
+  letter-spacing: 0.02em;
+  text-transform: none;
+}
+
+.grizzly-sms-api-input {
+  min-width: 180px;
+}
+
+.grizzly-sms-settings-grid {
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
+.grizzly-sms-settings-grid .hero-sms-settings-cell {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  align-items: center;
+}
+
+.grizzly-sms-settings-grid .hero-sms-settings-caption {
+  font-size: 11px;
 }
 
 .data-value {

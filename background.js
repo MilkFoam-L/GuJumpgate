@@ -9,8 +9,8 @@ importScripts(
   'mail2925-utils.js',
   'paypal-utils.js',
   'gopay-utils.js',
-  'phone-sms/providers/hero-sms.js',
   'phone-sms/providers/five-sim.js',
+  'phone-sms/providers/grizzly-sms.js',
   'phone-sms/providers/registry.js',
   'background/phone-verification-flow.js',
   'background/account-run-history.js',
@@ -247,6 +247,7 @@ const {
   getHotmailMailApiRequestConfig,
   getHotmailVerificationPollConfig,
   getHotmailVerificationRequestTimestamp,
+  isOutlookPlusAliasForEmail,
   normalizeHotmailServiceMode,
   normalizeHotmailMailApiMessages,
   pickHotmailAccountForRun,
@@ -609,11 +610,10 @@ const PHONE_SMS_PROVIDER_5SIM = '5sim';
 const PHONE_SMS_PROVIDER_HERO_SMS = PHONE_SMS_PROVIDER_HERO;
 const PHONE_SMS_PROVIDER_FIVE_SIM = PHONE_SMS_PROVIDER_5SIM;
 const PHONE_SMS_PROVIDER_NEXSMS = 'nexsms';
-const DEFAULT_PHONE_SMS_PROVIDER = PHONE_SMS_PROVIDER_HERO;
+const PHONE_SMS_PROVIDER_GRIZZLYSMS = 'grizzlysms';
+const DEFAULT_PHONE_SMS_PROVIDER = PHONE_SMS_PROVIDER_GRIZZLYSMS;
 const DEFAULT_PHONE_SMS_PROVIDER_ORDER = Object.freeze([
-  PHONE_SMS_PROVIDER_HERO,
-  PHONE_SMS_PROVIDER_5SIM,
-  PHONE_SMS_PROVIDER_NEXSMS,
+  PHONE_SMS_PROVIDER_GRIZZLYSMS,
 ]);
 const DEFAULT_FIVE_SIM_BASE_URL = 'https://5sim.net/v1';
 const DEFAULT_FIVE_SIM_PRODUCT = 'openai';
@@ -622,6 +622,9 @@ const DEFAULT_FIVE_SIM_COUNTRY_ORDER = Object.freeze(['thailand']);
 const DEFAULT_NEX_SMS_BASE_URL = 'https://api.nexsms.net';
 const DEFAULT_NEX_SMS_SERVICE_CODE = 'ot';
 const DEFAULT_NEX_SMS_COUNTRY_ORDER = Object.freeze([1]);
+const DEFAULT_GRIZZLY_SMS_SERVICE_CODE = 'dr';
+const DEFAULT_GRIZZLY_SMS_COUNTRY_ID = 'any';
+const DEFAULT_GRIZZLY_SMS_COUNTRY_LABEL = '任意 (any)';
 const DEFAULT_HERO_SMS_REUSE_ENABLED = true;
 const HERO_SMS_ACQUIRE_PRIORITY_COUNTRY = 'country';
 const HERO_SMS_ACQUIRE_PRIORITY_PRICE = 'price';
@@ -1058,9 +1061,9 @@ const PERSISTED_SETTING_DEFAULTS = {
   step6CookieCleanupEnabled: false,
   phoneVerificationEnabled: false,
   phoneSignupReloginAfterBindEmailEnabled: false,
-  phoneSmsReuseEnabled: DEFAULT_HERO_SMS_REUSE_ENABLED,
-  freePhoneReuseEnabled: true,
-  freePhoneReuseAutoEnabled: true,
+  phoneSmsReuseEnabled: false,
+  freePhoneReuseEnabled: false,
+  freePhoneReuseAutoEnabled: false,
   signupMethod: DEFAULT_SIGNUP_METHOD,
   phoneSmsProvider: DEFAULT_PHONE_SMS_PROVIDER,
   phoneSmsProviderOrder: [],
@@ -1145,6 +1148,12 @@ const PERSISTED_SETTING_DEFAULTS = {
   nexSmsApiKey: '',
   nexSmsCountryOrder: [...DEFAULT_NEX_SMS_COUNTRY_ORDER],
   nexSmsServiceCode: DEFAULT_NEX_SMS_SERVICE_CODE,
+  grizzlySmsApiKey: '',
+  grizzlySmsServiceCode: DEFAULT_GRIZZLY_SMS_SERVICE_CODE,
+  grizzlySmsCountryId: DEFAULT_GRIZZLY_SMS_COUNTRY_ID,
+  grizzlySmsCountryLabel: DEFAULT_GRIZZLY_SMS_COUNTRY_LABEL,
+  grizzlySmsCountryFallback: [],
+  grizzlySmsMaxPrice: '',
   phonePreferredActivation: null,
 };
 
@@ -1641,14 +1650,7 @@ function normalizePhoneSmsProvider(value = '') {
   if (rootScope.PhoneSmsProviderRegistry?.normalizeProviderId) {
     return rootScope.PhoneSmsProviderRegistry.normalizeProviderId(value);
   }
-  const normalized = String(value || '').trim().toLowerCase();
-  if (normalized === PHONE_SMS_PROVIDER_FIVE_SIM) {
-    return PHONE_SMS_PROVIDER_FIVE_SIM;
-  }
-  if (normalized === PHONE_SMS_PROVIDER_NEXSMS) {
-    return PHONE_SMS_PROVIDER_NEXSMS;
-  }
-  return PHONE_SMS_PROVIDER_HERO_SMS;
+  return PHONE_SMS_PROVIDER_GRIZZLYSMS;
 }
 function normalizePhoneSmsProviderOrder(value = [], fallbackOrder = []) {
   const rootScope = typeof self !== 'undefined' ? self : globalThis;
@@ -3392,6 +3394,18 @@ function normalizePersistentSettingValue(key, value) {
       return normalizeNexSmsCountryOrder(value);
     case 'nexSmsServiceCode':
       return normalizeNexSmsServiceCode(value);
+    case 'grizzlySmsApiKey':
+      return String(value || '');
+    case 'grizzlySmsServiceCode':
+      return String(value || '').trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '') || DEFAULT_GRIZZLY_SMS_SERVICE_CODE;
+    case 'grizzlySmsCountryId':
+      return String(value || '').trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '') || DEFAULT_GRIZZLY_SMS_COUNTRY_ID;
+    case 'grizzlySmsCountryLabel':
+      return String(value || '').trim() || DEFAULT_GRIZZLY_SMS_COUNTRY_LABEL;
+    case 'grizzlySmsCountryFallback':
+      return Array.isArray(value) ? value : [];
+    case 'grizzlySmsMaxPrice':
+      return normalizeHeroSmsMaxPrice(value);
     case 'phonePreferredActivation':
       return normalizePhonePreferredActivation(value);
     default:
@@ -13631,6 +13645,7 @@ const phoneVerificationHelpers = self.MultiPageBackgroundPhoneVerification?.crea
   sleepWithStop,
   throwIfStopped,
   createFiveSimProvider: self.PhoneSmsFiveSimProvider?.createProvider,
+  createGrizzlySmsProvider: self.PhoneSmsGrizzlySmsProvider?.createProvider,
 });
 const step1Executor = self.MultiPageBackgroundStep1?.createStep1Executor({
   addLog,
@@ -14085,8 +14100,9 @@ async function runLoginImportVerificationStep(stateOverride = {}) {
   }
 }
 
-async function runHotmailChatGptLogin(account) {
-  await addLog(`登录并导入：正在打开 ChatGPT 登录页，账号 ${account.email}。`, 'info');
+async function runHotmailChatGptLogin(account, options = {}) {
+  const loginEmail = String(options.loginEmail || account?.email || '').trim();
+  await addLog(`登录并导入：正在打开 ChatGPT 登录页，账号 ${loginEmail || account.email}。`, 'info');
   const tabId = await reuseOrCreateTab('signup-page', 'https://chatgpt.com/auth/login', { forceNew: true });
   await waitForTabCompleteUntilStopped(tabId, { timeoutMs: 45000 }).catch(() => null);
   await ensureContentScriptReadyOnTabUntilStopped('signup-page', tabId, {
@@ -14097,8 +14113,8 @@ async function runHotmailChatGptLogin(account) {
   });
 
   const loginPayload = {
-    email: account.email,
-    accountIdentifier: account.email,
+    email: loginEmail || account.email,
+    accountIdentifier: loginEmail || account.email,
     loginIdentifierType: 'email',
     password: account.password,
     visibleStep: 7,
@@ -14135,30 +14151,35 @@ async function runHotmailChatGptLogin(account) {
   return tabId;
 }
 
-async function loginHotmailAndImportSub2Api(accountId) {
+async function loginHotmailAndImportSub2Api(accountId, options = {}) {
   const state = await getState();
   const account = findHotmailAccount(normalizeHotmailAccounts(state.hotmailAccounts), accountId);
   validateHotmailSub2ApiLoginImportState(state, account);
+  const requestedLoginEmail = String(options?.loginEmail || '').trim().toLowerCase();
+  const loginEmail = requestedLoginEmail && isOutlookPlusAliasForEmail(requestedLoginEmail, account.email)
+    ? requestedLoginEmail
+    : account.email;
 
-  await addLog(`登录并导入：准备使用 Hotmail 已用账号 ${account.email} 重新登录 ChatGPT。`, 'info');
+  await addLog(`登录并导入：准备使用 Hotmail 已用账号 ${loginEmail} 重新登录 ChatGPT。`, 'info');
   await setCurrentHotmailAccount(account.id, { markUsed: false, syncEmail: true });
   await setPasswordState(account.password);
   await setState({
     accountIdentifierType: 'email',
-    accountIdentifier: account.email,
+    accountIdentifier: loginEmail,
     signupMethod: 'email',
     resolvedSignupMethod: 'email',
     mailProvider: HOTMAIL_PROVIDER,
     panelMode: 'sub2api',
     plusModeEnabled: true,
     plusAccountAccessStrategy: PLUS_ACCOUNT_ACCESS_STRATEGY_SUB2API_CODEX_SESSION,
-    step8VerificationTargetEmail: account.email,
+    email: loginEmail,
+    step8VerificationTargetEmail: loginEmail,
     loginVerificationRequestedAt: null,
     lastLoginCode: null,
   });
 
   await step1Executor.clearOpenAiCookiesBeforeStep1();
-  const loginTabId = await runHotmailChatGptLogin(account);
+  const loginTabId = await runHotmailChatGptLogin(account, { loginEmail });
   const sessionTab = await ensureChatGptSessionTabForImport(loginTabId);
   await addLog('登录并导入：ChatGPT 登录完成，正在读取当前会话并导入 SUB2API。', 'info');
 

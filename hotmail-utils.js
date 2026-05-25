@@ -468,6 +468,26 @@
     return key ? Object.values(normalizeHotmailAliasUsage(usage)[key]?.aliases || {}) : [];
   }
 
+  function normalizeOutlookPlusAliasBaseEmail(email = '') {
+    const parts = parseEmailAddressParts(email);
+    if (!parts) {
+      return '';
+    }
+    const domain = parts.domain.trim().toLowerCase();
+    if (!/^(?:hotmail|outlook|live)\.com$/.test(domain)) {
+      return String(email || '').trim().toLowerCase();
+    }
+    const local = parts.local.trim().toLowerCase();
+    const plusIndex = local.indexOf('+');
+    return `${plusIndex >= 0 ? local.slice(0, plusIndex) : local}@${domain}`;
+  }
+
+  function isOutlookPlusAliasForEmail(aliasEmail = '', baseEmail = '') {
+    const aliasBase = normalizeOutlookPlusAliasBaseEmail(aliasEmail);
+    const base = normalizeOutlookPlusAliasBaseEmail(baseEmail);
+    return Boolean(aliasBase && base && aliasBase === base);
+  }
+
   function isHotmailAliasCapacityExhausted(account = {}, usage = {}, maxAliases = OUTLOOK_ALIAS_DEFAULT_MAX_PER_ACCOUNT) {
     const normalizedMax = normalizeOutlookAliasMaxPerAccount(maxAliases);
     const usedCount = getHotmailAliasEntriesForAccount(usage, account).filter((entry) => entry?.used).length;
@@ -601,11 +621,13 @@
     getHotmailVerificationRequestTimestamp,
     getHotmailAliasEntriesForAccount,
     getHotmailAliasUsageKey,
+    isOutlookPlusAliasForEmail,
     isAuthorizedHotmailAccount,
     isHotmailAliasCapacityExhausted,
     buildOutlookPlusAliasEmail,
     findSubscriptionMessageForAlias,
     normalizeHotmailAliasUsage,
+    normalizeOutlookPlusAliasBaseEmail,
     normalizeHotmailServiceMode,
     normalizeHotmailMailApiMessages,
     normalizeOutlookAliasMaxPerAccount,

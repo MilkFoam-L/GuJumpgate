@@ -1785,7 +1785,9 @@
           if (typeof loginHotmailAndImportSub2Api !== 'function') {
             throw new Error('重新登录导入 SUB2API 能力未接入。');
           }
-          const result = await loginHotmailAndImportSub2Api(String(message.payload?.accountId || ''));
+          const result = await loginHotmailAndImportSub2Api(String(message.payload?.accountId || ''), {
+            loginEmail: String(message.payload?.loginEmail || '').trim(),
+          });
           return { ok: true, ...result };
         }
 

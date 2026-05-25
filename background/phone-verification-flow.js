@@ -29,6 +29,7 @@
       DEFAULT_NEX_SMS_SERVICE_CODE = 'ot',
       DEFAULT_HERO_SMS_REUSE_ENABLED = true,
       createFiveSimProvider = null,
+      createGrizzlySmsProvider = null,
       HERO_SMS_COUNTRY_ID = 52,
       HERO_SMS_COUNTRY_LABEL = 'Thailand',
       HERO_SMS_SERVICE_CODE = 'dr',
@@ -83,11 +84,10 @@
     const PHONE_SMS_PROVIDER_HERO_SMS = PHONE_SMS_PROVIDER_HERO;
     const PHONE_SMS_PROVIDER_FIVE_SIM = PHONE_SMS_PROVIDER_5SIM;
     const PHONE_SMS_PROVIDER_NEXSMS = 'nexsms';
-    const DEFAULT_PHONE_SMS_PROVIDER = PHONE_SMS_PROVIDER_HERO;
+    const PHONE_SMS_PROVIDER_GRIZZLYSMS = 'grizzlysms';
+    const DEFAULT_PHONE_SMS_PROVIDER = PHONE_SMS_PROVIDER_GRIZZLYSMS;
     const DEFAULT_PHONE_SMS_PROVIDER_ORDER = Object.freeze([
-      PHONE_SMS_PROVIDER_HERO,
-      PHONE_SMS_PROVIDER_5SIM,
-      PHONE_SMS_PROVIDER_NEXSMS,
+      PHONE_SMS_PROVIDER_GRIZZLYSMS,
     ]);
     const MAX_PHONE_REUSABLE_POOL = 12;
     const PHONE_CODE_TIMEOUT_ERROR_PREFIX = 'PHONE_CODE_TIMEOUT::';
@@ -184,14 +184,7 @@
       if (rootScope.PhoneSmsProviderRegistry?.normalizeProviderId) {
         return rootScope.PhoneSmsProviderRegistry.normalizeProviderId(value);
       }
-      const normalized = String(value || '').trim().toLowerCase();
-      if (normalized === PHONE_SMS_PROVIDER_5SIM) {
-        return PHONE_SMS_PROVIDER_5SIM;
-      }
-      if (normalized === PHONE_SMS_PROVIDER_NEXSMS) {
-        return PHONE_SMS_PROVIDER_NEXSMS;
-      }
-      return PHONE_SMS_PROVIDER_HERO;
+      return PHONE_SMS_PROVIDER_GRIZZLYSMS;
     }
     function isFiveSimProvider(state = {}) {
       return normalizePhoneSmsProvider(state?.phoneSmsProvider || DEFAULT_PHONE_SMS_PROVIDER) === PHONE_SMS_PROVIDER_5SIM;
@@ -634,7 +627,7 @@
       });
 
       if (normalized.length) {
-        return normalized.slice(0, 3);
+        return normalized.slice(0, DEFAULT_PHONE_SMS_PROVIDER_ORDER.length);
       }
 
       const fallback = Array.isArray(fallbackOrder) ? fallbackOrder : [];
@@ -650,34 +643,13 @@
         fallbackNormalized.push(provider);
       });
 
-      return fallbackNormalized.slice(0, 3);
+      return fallbackNormalized.slice(0, DEFAULT_PHONE_SMS_PROVIDER_ORDER.length);
     }
     function resolvePhoneProviderOrder(state = {}, preferredProvider = '') {
       const currentProvider = normalizePhoneSmsProvider(
         preferredProvider || state?.phoneSmsProvider || DEFAULT_PHONE_SMS_PROVIDER
       );
-      const hasExplicitOrder = Array.isArray(state?.phoneSmsProviderOrder)
-        ? state.phoneSmsProviderOrder.length > 0
-        : String(state?.phoneSmsProviderOrder || '').trim().length > 0;
-      if (hasExplicitOrder) {
-        const explicitOrder = normalizePhoneSmsProviderOrder(
-          state?.phoneSmsProviderOrder,
-          []
-        );
-        if (explicitOrder.length) {
-          return explicitOrder;
-        }
-        return [currentProvider];
-      }
-      const fallbackOrder = normalizePhoneSmsProviderOrder(
-        [currentProvider],
-        DEFAULT_PHONE_SMS_PROVIDER_ORDER
-      );
-      if (fallbackOrder[0] === currentProvider) {
-        return fallbackOrder;
-      }
-      const withoutCurrent = fallbackOrder.filter((provider) => provider !== currentProvider);
-      return [currentProvider, ...withoutCurrent].slice(0, 3);
+      return [currentProvider];
     }
 
     function reorderPriceCandidates(prices = [], acquirePriority = HERO_SMS_ACQUIRE_PRIORITY_COUNTRY, preferredPrice = null) {
@@ -904,6 +876,9 @@
       }
       if (provider === PHONE_SMS_PROVIDER_NEXSMS) {
         return 'NexSMS';
+      }
+      if (provider === PHONE_SMS_PROVIDER_GRIZZLYSMS) {
+        return 'GrizzlySMS';
       }
       return 'HeroSMS';
     }
@@ -1143,6 +1118,32 @@
       return createResolvedFiveSimProvider();
     }
 
+    function createResolvedGrizzlySmsProvider() {
+      const rootScope = typeof self !== 'undefined' ? self : globalThis;
+      const factory = createGrizzlySmsProvider || rootScope.PhoneSmsGrizzlySmsProvider?.createProvider;
+      if (typeof factory !== 'function') {
+        return null;
+      }
+      return factory({
+        addLog,
+        fetchImpl,
+        requestTimeoutMs: DEFAULT_PHONE_REQUEST_TIMEOUT_MS,
+        sleepWithStop,
+        throwIfStopped,
+      });
+    }
+
+    function getProviderAdapterForState(state = {}, providerId = null) {
+      const provider = normalizePhoneSmsProvider(providerId || state?.phoneSmsProvider || DEFAULT_PHONE_SMS_PROVIDER);
+      if (provider === PHONE_SMS_PROVIDER_FIVE_SIM) {
+        return getFiveSimProviderForState(state);
+      }
+      if (provider === PHONE_SMS_PROVIDER_GRIZZLYSMS) {
+        return createResolvedGrizzlySmsProvider();
+      }
+      return null;
+    }
+
     function normalizeFiveSimCountryId(value, fallback = 'england') {
       const normalized = String(value || '').trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '');
       return normalized || fallback;
@@ -1305,7 +1306,9 @@
       const rawProvider = String(record.provider || '').trim();
       const provider = normalizePhoneSmsProvider(rawProvider);
       const rawCountryId = record.countryId ?? record.country;
-      const fallbackCountryId = provider === PHONE_SMS_PROVIDER_FIVE_SIM ? 'england' : HERO_SMS_COUNTRY_ID;
+      const fallbackCountryId = provider === PHONE_SMS_PROVIDER_FIVE_SIM
+        ? 'england'
+        : (provider === PHONE_SMS_PROVIDER_GRIZZLYSMS ? 'any' : HERO_SMS_COUNTRY_ID);
       const expiresAt = normalizeTimestampMs(record.expiresAt);
       const serviceCode = String(
         record.serviceCode
@@ -1320,7 +1323,9 @@
         : (
           provider === PHONE_SMS_PROVIDER_NEXSMS
             ? normalizeNexSmsCountryId(rawCountryId, 0)
-            : normalizeCountryId(rawCountryId, fallbackCountryId)
+            : (provider === PHONE_SMS_PROVIDER_GRIZZLYSMS
+              ? normalizeFiveSimCountryId(record.countryCode ?? rawCountryId, fallbackCountryId)
+              : normalizeCountryId(rawCountryId, fallbackCountryId))
         );
       return {
         activationId,
@@ -1328,7 +1333,7 @@
         provider,
         serviceCode,
         countryId,
-        ...(provider === PHONE_SMS_PROVIDER_FIVE_SIM ? { countryCode: countryId } : {}),
+        ...(provider === PHONE_SMS_PROVIDER_FIVE_SIM || provider === PHONE_SMS_PROVIDER_GRIZZLYSMS ? { countryCode: countryId } : {}),
         ...(countryLabel ? { countryLabel } : {}),
         successfulUses: normalizeUseCount(record.successfulUses),
         maxUses: Math.max(1, Math.floor(Number(record.maxUses) || DEFAULT_PHONE_NUMBER_MAX_USES)),
@@ -3548,8 +3553,8 @@
     }
 
     async function requestPhoneActivation(state = {}, options = {}) {
-      if (normalizePhoneSmsProvider(state?.phoneSmsProvider) === PHONE_SMS_PROVIDER_FIVE_SIM) {
-        const provider = getFiveSimProviderForState(state);
+      if ([PHONE_SMS_PROVIDER_FIVE_SIM, PHONE_SMS_PROVIDER_GRIZZLYSMS].includes(normalizePhoneSmsProvider(state?.phoneSmsProvider))) {
+        const provider = getProviderAdapterForState(state);
         if (provider) {
           return provider.requestActivation(state, options);
         }
@@ -3892,11 +3897,11 @@
       if (!normalizedActivation) {
         throw new Error('缺少可复用的手机号接码订单。');
       }
-      if (getActivationProviderId(normalizedActivation, state) === PHONE_SMS_PROVIDER_FIVE_SIM) {
-        const provider = getFiveSimProviderForState(state);
-        if (provider) {
-          return provider.reuseActivation(state, normalizedActivation);
-        }
+        if ([PHONE_SMS_PROVIDER_FIVE_SIM, PHONE_SMS_PROVIDER_GRIZZLYSMS].includes(getActivationProviderId(normalizedActivation, state))) {
+          const provider = getProviderAdapterForState(state, getActivationProviderId(normalizedActivation, state));
+          if (provider) {
+            return provider.reuseActivation(state, normalizedActivation);
+          }
       }
 
       const config = resolvePhoneConfig(state);
@@ -3999,8 +4004,8 @@
         );
         return;
       }
-      if (getActivationProviderId(activation, state) === PHONE_SMS_PROVIDER_FIVE_SIM) {
-        const provider = getFiveSimProviderForState(state);
+      if ([PHONE_SMS_PROVIDER_FIVE_SIM, PHONE_SMS_PROVIDER_GRIZZLYSMS].includes(getActivationProviderId(activation, state))) {
+        const provider = getProviderAdapterForState(state, getActivationProviderId(activation, state));
         if (provider) {
           await provider.finishActivation(state, activation);
           return;
@@ -4020,8 +4025,8 @@
           );
           return;
         }
-        if (getActivationProviderId(activation, state) === PHONE_SMS_PROVIDER_FIVE_SIM) {
-          const provider = getFiveSimProviderForState(state);
+        if ([PHONE_SMS_PROVIDER_FIVE_SIM, PHONE_SMS_PROVIDER_GRIZZLYSMS].includes(getActivationProviderId(activation, state))) {
+          const provider = getProviderAdapterForState(state, getActivationProviderId(activation, state));
           if (provider) {
             await provider.cancelActivation(state, activation);
             return;
@@ -4089,8 +4094,8 @@
           );
           return;
         }
-        if (getActivationProviderId(activation, state) === PHONE_SMS_PROVIDER_FIVE_SIM) {
-          const provider = getFiveSimProviderForState(state);
+        if ([PHONE_SMS_PROVIDER_FIVE_SIM, PHONE_SMS_PROVIDER_GRIZZLYSMS].includes(getActivationProviderId(activation, state))) {
+          const provider = getProviderAdapterForState(state, getActivationProviderId(activation, state));
           if (provider) {
             await provider.banActivation(state, activation);
             return;
@@ -4251,8 +4256,8 @@
       if (!normalizedActivation) {
         throw new Error('缺少手机号接码订单。');
       }
-      if (getActivationProviderId(normalizedActivation, state) === PHONE_SMS_PROVIDER_FIVE_SIM) {
-        const provider = getFiveSimProviderForState(state);
+      if ([PHONE_SMS_PROVIDER_FIVE_SIM, PHONE_SMS_PROVIDER_GRIZZLYSMS].includes(getActivationProviderId(normalizedActivation, state))) {
+        const provider = getProviderAdapterForState(state, getActivationProviderId(normalizedActivation, state));
         if (provider) {
           return provider.pollActivationCode(state, normalizedActivation, options);
         }
@@ -4516,10 +4521,13 @@
     }
 
     function resolveCountryCandidatesForProvider(state = {}, providerId = normalizePhoneSmsProvider(state?.phoneSmsProvider)) {
-      if (normalizePhoneSmsProvider(providerId) === PHONE_SMS_PROVIDER_FIVE_SIM) {
-        const provider = getFiveSimProviderForState(state);
+      if ([PHONE_SMS_PROVIDER_FIVE_SIM, PHONE_SMS_PROVIDER_GRIZZLYSMS].includes(normalizePhoneSmsProvider(providerId))) {
+        const provider = getProviderAdapterForState(state, providerId);
         if (provider) {
           return provider.resolveCountryCandidates(state);
+        }
+        if (normalizePhoneSmsProvider(providerId) === PHONE_SMS_PROVIDER_GRIZZLYSMS) {
+          return [{ id: 'any', label: '任意 (any)' }];
         }
         return resolveFiveSimCountryCandidates(state);
       }
@@ -4533,14 +4541,16 @@
       const providerId = getActivationProviderId(activation, fallbackState);
       const candidates = resolveCountryCandidatesForProvider(fallbackState, providerId);
       if (activation && typeof activation === 'object') {
-        if (providerId === PHONE_SMS_PROVIDER_FIVE_SIM) {
+        if (providerId === PHONE_SMS_PROVIDER_FIVE_SIM || providerId === PHONE_SMS_PROVIDER_GRIZZLYSMS) {
           const countryId = normalizeFiveSimCountryId(activation.countryId, '');
           if (countryId) {
             const matched = candidates.find((entry) => String(entry.id) === countryId);
             if (matched) return matched;
             return {
               id: countryId,
-              label: normalizeFiveSimCountryLabel(activation.countryLabel, countryId),
+              label: providerId === PHONE_SMS_PROVIDER_GRIZZLYSMS
+                ? String(activation.countryLabel || (countryId === 'any' ? '任意 (any)' : `Country ${countryId}`)).trim()
+                : normalizeFiveSimCountryLabel(activation.countryLabel, countryId),
             };
           }
         } else {

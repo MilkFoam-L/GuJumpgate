@@ -2,30 +2,23 @@
 (function attachPhoneSmsProviderRegistry(root, factory) {
   root.PhoneSmsProviderRegistry = factory(root);
 })(typeof self !== 'undefined' ? self : globalThis, function createPhoneSmsProviderRegistry(root) {
-  const PROVIDER_HERO_SMS = 'hero-sms';
   const PROVIDER_FIVE_SIM = '5sim';
-  const PROVIDER_NEXSMS = 'nexsms';
-  const DEFAULT_PROVIDER = PROVIDER_HERO_SMS;
+  const PROVIDER_GRIZZLYSMS = 'grizzlysms';
+  const DEFAULT_PROVIDER = PROVIDER_GRIZZLYSMS;
   const DEFAULT_PROVIDER_ORDER = Object.freeze([
-    PROVIDER_HERO_SMS,
+    PROVIDER_GRIZZLYSMS,
     PROVIDER_FIVE_SIM,
-    PROVIDER_NEXSMS,
   ]);
   const PROVIDER_DEFINITIONS = Object.freeze({
-    [PROVIDER_HERO_SMS]: Object.freeze({
-      id: PROVIDER_HERO_SMS,
-      label: 'HeroSMS',
-      moduleKey: 'PhoneSmsHeroSmsProvider',
+    [PROVIDER_GRIZZLYSMS]: Object.freeze({
+      id: PROVIDER_GRIZZLYSMS,
+      label: 'GrizzlySMS',
+      moduleKey: 'PhoneSmsGrizzlySmsProvider',
     }),
     [PROVIDER_FIVE_SIM]: Object.freeze({
       id: PROVIDER_FIVE_SIM,
       label: '5sim',
       moduleKey: 'PhoneSmsFiveSimProvider',
-    }),
-    [PROVIDER_NEXSMS]: Object.freeze({
-      id: PROVIDER_NEXSMS,
-      label: 'NexSMS',
-      moduleKey: 'PhoneSmsNexSmsProvider',
     }),
   });
 
@@ -118,13 +111,12 @@
   }
 
   function getProviderLabel(providerId = DEFAULT_PROVIDER) {
-    return getProviderDefinition(providerId)?.label || 'HeroSMS';
+    return getProviderDefinition(providerId)?.label || 'GrizzlySMS';
   }
 
   return {
-    PROVIDER_HERO_SMS,
     PROVIDER_FIVE_SIM,
-    PROVIDER_NEXSMS,
+    PROVIDER_GRIZZLYSMS,
     DEFAULT_PROVIDER,
     DEFAULT_PROVIDER_ORDER,
     PROVIDER_DEFINITIONS,

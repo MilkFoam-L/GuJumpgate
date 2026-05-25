@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh-CN">
 
 <head>
@@ -110,6 +110,12 @@
 
   <section id="data-section">
     <div id="settings-card" class="data-card">
+      <div class="section-mini-header">
+        <div class="section-mini-copy">
+          <span class="section-label">基础配置</span>
+          <span class="data-value">流程、导出目标与账号接入</span>
+        </div>
+      </div>
       <div class="data-row">
         <span class="data-label">注册</span>
         <select id="select-flow" class="data-select" aria-label="Flow 选择">
@@ -284,6 +290,14 @@
           <button id="btn-toggle-password" class="input-icon-btn" type="button" aria-label="显示密码" title="显示密码"></button>
         </div>
       </div>
+    </div>
+    <div id="paypal-registration-section" class="data-card module-card">
+      <div class="section-mini-header">
+        <div class="section-mini-copy">
+          <span class="section-label">PayPal 注册</span>
+          <span class="data-value">控制 Plus Checkout / PayPal 是否参与流程</span>
+        </div>
+      </div>
       <div class="data-row" id="row-plus-mode">
         <span class="data-label">Plus 模式</span>
         <div class="data-inline setting-pair">
@@ -354,13 +368,13 @@
           <span id="display-plus-checkout-conversion-proxy-test-result" class="data-value mono plus-checkout-conversion-proxy-test-result">未测试</span>
         </div>
       </div>
-      <div class="data-row" id="row-hosted-checkout-verification-url" style="display:none;">
+      <div class="data-row is-hidden-permanently" id="row-hosted-checkout-verification-url" style="display:none !important;" hidden>
         <span class="data-label">验证码接口</span>
         <input type="text" id="input-hosted-checkout-verification-url" class="data-input"
           placeholder="https://mail.test.com/api/text-relay/eca_tr_xxxxxxxxx"
           title="只填基础接口地址，不需要带 ?t= 时间戳参数" />
       </div>
-      <div class="data-row" id="row-hosted-checkout-manual-fetch" style="display:none;">
+      <div class="data-row is-hidden-permanently" id="row-hosted-checkout-manual-fetch" style="display:none !important;" hidden>
         <span class="data-label">手动取码</span>
         <div class="data-inline data-value-actions hosted-checkout-manual-fetch-inline">
           <button id="btn-hosted-checkout-manual-fetch" class="btn btn-outline btn-sm data-inline-btn" type="button">手动获取验证码</button>
@@ -375,7 +389,7 @@
           <span class="setting-caption">检测到验证码弹窗后，先等待多少秒再开始获取验证码；默认 20 秒</span>
         </div>
       </div>
-      <div class="data-row" id="row-hosted-checkout-phone" style="display:none;">
+      <div class="data-row is-hidden-permanently" id="row-hosted-checkout-phone" style="display:none !important;" hidden>
         <span class="data-label">PayPal 电话(不带+1)</span>
         <input type="text" id="input-hosted-checkout-phone" class="data-input mono"
           placeholder="1234567890" />
@@ -546,7 +560,15 @@
             title="显示 GoPay PIN"></button>
         </div>
       </div>
-      <div class="data-row module-divider-start" id="row-mail-provider">
+    </div>
+    <div id="mail-service-section" class="data-card module-card">
+      <div class="section-mini-header">
+        <div class="section-mini-copy">
+          <span class="section-label">邮箱服务</span>
+          <span class="data-value">选择注册邮箱来源与邮箱池配置</span>
+        </div>
+      </div>
+      <div class="data-row" id="row-mail-provider">
         <span class="data-label">邮箱服务</span>
         <div class="data-inline">
           <select id="select-mail-provider" class="data-select">
@@ -680,6 +702,14 @@
         <span class="data-label">邮箱名</span>
         <input type="text" id="input-inbucket-mailbox" class="data-input" placeholder="例如 zju2001" />
       </div>
+    </div>
+    <div id="email-registration-section" class="data-card module-card">
+      <div class="section-mini-header">
+        <div class="section-mini-copy">
+          <span class="section-label">邮箱注册</span>
+          <span class="data-value">当前注册邮箱与邮箱流程运行控制</span>
+        </div>
+      </div>
       <div class="data-row" id="row-auto-run-controls">
         <span class="data-label">注册邮箱</span>
         <div class="data-inline">
@@ -687,7 +717,15 @@
           <button id="btn-fetch-email" class="btn btn-outline btn-sm data-inline-btn" type="button">获取</button>
         </div>
       </div>
-      <div class="data-row module-divider-start" id="row-auto-delay-settings">
+    </div>
+    <div id="runtime-settings-section" class="data-card module-card">
+      <div class="section-mini-header">
+        <div class="section-mini-copy">
+          <span class="section-label">运行控制</span>
+          <span class="data-value">自动运行、重试与 OAuth 回调状态</span>
+        </div>
+      </div>
+      <div class="data-row" id="row-auto-delay-settings">
         <span class="data-label">第六步</span>
         <div class="data-inline setting-pair auto-delay-setting-pair">
           <div class="setting-group setting-group-primary step6-cookie-cleanup-setting">
@@ -1446,11 +1484,37 @@
         </div>
       </div>
     </div>
+    <div id="phone-registration-section" class="data-card module-card phone-registration-card">
+      <div class="section-mini-header">
+        <div class="section-mini-copy">
+          <span class="section-label">手机号注册</span>
+          <span class="data-value">选择邮箱流程或 Codex 手机号验证流程</span>
+        </div>
+      </div>
+      <div class="data-row" id="row-signup-method" style="display:none;">
+        <span class="data-label">Codex 模式</span>
+        <div id="signup-method-group" class="choice-group" role="group" aria-label="Codex 接码用途">
+          <button type="button" class="choice-btn" data-signup-method="email">邮箱流程</button>
+          <button type="button" class="choice-btn" data-signup-method="phone">Codex 接码</button>
+        </div>
+      </div>
+      <div class="data-row" id="row-phone-signup-relogin-after-bind-email" style="display:none;">
+        <span class="data-label">绑定后重登</span>
+        <label class="toggle-switch" for="input-phone-signup-relogin-after-bind-email"
+          title="手机号注册绑定邮箱后，跳过绑定邮箱验证码，重新刷新 OAuth 并使用绑定邮箱登录">
+          <input type="checkbox" id="input-phone-signup-relogin-after-bind-email" />
+          <span class="toggle-switch-track" aria-hidden="true">
+            <span class="toggle-switch-thumb"></span>
+          </span>
+        </label>
+        <span class="data-value">绑定邮箱后切入邮箱注册模式 OAuth 尾部</span>
+      </div>
+    </div>
     <div id="phone-verification-section" class="data-card phone-verification-card">
       <div class="section-mini-header">
         <div class="section-mini-copy">
-          <span class="section-label">接码设置</span>
-          <span class="data-value"></span>
+          <span class="section-label">Codex 接码</span>
+          <span class="data-value">仅用于 Codex 手机号验证</span>
         </div>
         <div id="row-phone-verification-enabled" class="section-mini-actions phone-verification-header-actions">
           <button id="btn-toggle-phone-verification-section" class="btn btn-ghost btn-xs" type="button"
@@ -1466,24 +1530,6 @@
       <div class="data-row phone-verification-fold-row" id="row-phone-verification-fold" style="display:none;">
         <div id="phone-verification-fold" class="phone-verification-fold">
           <div class="phone-verification-fold-body">
-            <div class="data-row" id="row-signup-method" style="display:none;">
-              <span class="data-label">注册方式</span>
-              <div id="signup-method-group" class="choice-group" role="group" aria-label="注册方式">
-                <button type="button" class="choice-btn" data-signup-method="email">邮箱注册</button>
-                <button type="button" class="choice-btn" data-signup-method="phone">手机号注册</button>
-              </div>
-            </div>
-            <div class="data-row" id="row-phone-signup-relogin-after-bind-email" style="display:none;">
-              <span class="data-label">绑定后重登</span>
-              <label class="toggle-switch" for="input-phone-signup-relogin-after-bind-email"
-                title="手机号注册绑定邮箱后，跳过绑定邮箱验证码，重新刷新 OAuth 并使用绑定邮箱登录">
-                <input type="checkbox" id="input-phone-signup-relogin-after-bind-email" />
-                <span class="toggle-switch-track" aria-hidden="true">
-                  <span class="toggle-switch-thumb"></span>
-                </span>
-              </label>
-              <span class="data-value">绑定邮箱后切入邮箱注册模式 OAuth 尾部</span>
-            </div>
             <div class="data-row" id="row-account-run-history-helper-base-url" style="display:none;">
               <span class="data-label">同步服务</span>
               <input type="text" id="input-account-run-history-helper-base-url" class="data-input mono"
@@ -1492,36 +1538,9 @@
             <div class="data-row" id="row-phone-sms-provider" style="display:none;">
               <span class="data-label">接码服务商</span>
               <select id="select-phone-sms-provider" class="data-select mono">
-                <option value="hero-sms">HeroSMS</option>
+                <option value="grizzlysms">GrizzlySMS</option>
                 <option value="5sim">5sim</option>
-                <option value="nexsms">NexSMS</option>
               </select>
-            </div>
-            <div class="data-row" id="row-phone-sms-provider-order" style="display:none;">
-              <span class="data-label">服务商顺序</span>
-              <div class="data-inline hero-sms-country-stack">
-                <select id="select-phone-sms-provider-order" class="data-input mono" multiple size="3" style="display:none;">
-                  <option value="hero-sms" selected>HeroSMS</option>
-                  <option value="5sim" selected>5sim</option>
-                  <option value="nexsms" selected>NexSMS</option>
-                </select>
-                <div class="hero-sms-country-mainline">
-                  <div id="phone-sms-provider-order-menu-shell" class="hero-sms-country-menu">
-                    <button id="btn-phone-sms-provider-order-menu" class="btn btn-outline btn-sm hero-sms-country-menu-btn" type="button" aria-haspopup="listbox" aria-expanded="false">
-                      HeroSMS / 5sim / NexSMS (3/3)
-                    </button>
-                    <div id="phone-sms-provider-order-menu" class="hero-sms-country-menu-dropdown" role="listbox" aria-multiselectable="true" hidden></div>
-                  </div>
-                </div>
-                <span class="data-value hero-sms-country-note">第一位为主服务商，后续按顺序自动回退。</span>
-              </div>
-            </div>
-            <div class="data-row" id="row-phone-sms-provider-order-actions" style="display:none;">
-              <span class="data-label">顺序管理</span>
-              <div class="data-inline data-value-actions">
-                <span id="display-phone-sms-provider-order" class="data-value data-value-fill mono country-order-list">未设置</span>
-                <button id="btn-phone-sms-provider-order-reset" class="btn btn-ghost btn-xs data-inline-btn" type="button">清空</button>
-              </div>
             </div>
             <div class="data-row" id="row-hero-sms-platform" style="display:none;">
               <span class="data-label">接码平台</span>
@@ -1613,44 +1632,35 @@
               <input type="text" id="input-five-sim-product" class="data-input mono"
                 placeholder="openai" />
             </div>
-            <div class="data-row" id="row-nex-sms-api-key" style="display:none;">
-              <span class="data-label">NexSMS API</span>
-              <div class="input-with-icon">
-                <input type="password" id="input-nex-sms-api-key" class="data-input data-input-with-icon mono"
-                  placeholder="请输入 NexSMS API Key" />
-                <button id="btn-toggle-nex-sms-api-key" class="input-icon-btn" type="button"
-                  data-password-toggle="input-nex-sms-api-key" data-show-label="显示 NexSMS API Key"
-                  data-hide-label="隐藏 NexSMS API Key" aria-label="显示 NexSMS API Key" title="显示 NexSMS API Key"></button>
+            <div class="data-row grizzly-sms-api-row" id="row-grizzly-sms-api-key" style="display:none;">
+              <span class="data-label">GrizzlySMS<br>API</span>
+              <div class="input-with-icon grizzly-sms-api-input">
+                <input type="password" id="input-grizzly-sms-api-key" class="data-input data-input-with-icon mono"
+                  placeholder="请输入 Codex/OpenAI 专用 GrizzlySMS API Key" />
+                <button id="btn-toggle-grizzly-sms-api-key" class="input-icon-btn" type="button"
+                  data-password-toggle="input-grizzly-sms-api-key" data-show-label="显示 GrizzlySMS API Key"
+                  data-hide-label="隐藏 GrizzlySMS API Key" aria-label="显示 GrizzlySMS API Key" title="显示 GrizzlySMS API Key"></button>
               </div>
             </div>
-            <div class="data-row" id="row-nex-sms-country" style="display:none;">
-              <span class="data-label">国家优先级</span>
-              <div class="data-inline hero-sms-country-stack">
-                <select id="select-nex-sms-country" class="data-input mono" multiple size="6" style="display:none;">
-                  <option value="1" selected>Country #1</option>
-                </select>
-                <div class="hero-sms-country-mainline">
-                  <div id="nex-sms-country-menu-shell" class="hero-sms-country-menu">
-                    <button id="btn-nex-sms-country-menu" class="btn btn-outline btn-sm hero-sms-country-menu-btn" type="button" aria-haspopup="listbox" aria-expanded="false">
-                      Country #1 (1/3)
-                    </button>
-                    <div id="nex-sms-country-menu" class="hero-sms-country-menu-dropdown" role="listbox" aria-multiselectable="true" hidden></div>
-                  </div>
+            <div class="data-row grizzly-sms-params-row" id="row-grizzly-sms-params" style="display:none;">
+              <span class="data-label">GrizzlySMS<br>参数</span>
+              <div class="data-inline hero-sms-settings-grid grizzly-sms-settings-grid">
+                <div class="hero-sms-settings-cell">
+                  <span class="hero-sms-settings-caption">服务代码</span>
+                  <input type="text" id="input-grizzly-sms-service-code" class="data-input auto-delay-input mono"
+                    placeholder="openai/codex 服务代码" autocomplete="off" />
                 </div>
-                <span class="data-value hero-sms-country-note">多选最多 3 个，按点击顺序生效。</span>
+                <div class="hero-sms-settings-cell">
+                  <span class="hero-sms-settings-caption">国家</span>
+                  <input type="text" id="input-grizzly-sms-country-id" class="data-input auto-delay-input mono"
+                    placeholder="any / 国家 ID" autocomplete="off" />
+                </div>
+                <div class="hero-sms-settings-cell">
+                  <span class="hero-sms-settings-caption">价格上限</span>
+                  <input type="number" id="input-grizzly-sms-max-price" class="data-input auto-delay-input mono"
+                    placeholder="可空" min="0" step="0.0001" autocomplete="off" />
+                </div>
               </div>
-            </div>
-            <div class="data-row" id="row-nex-sms-country-fallback" style="display:none;">
-              <span class="data-label">生效顺序</span>
-              <div class="data-inline data-value-actions">
-                <span id="display-nex-sms-country-fallback-order" class="data-value data-value-fill mono country-order-list">未设置</span>
-                <button id="btn-nex-sms-country-clear" class="btn btn-ghost btn-xs data-inline-btn" type="button">清空</button>
-              </div>
-            </div>
-            <div class="data-row" id="row-nex-sms-service-code" style="display:none;">
-              <span class="data-label">服务代码</span>
-              <input type="text" id="input-nex-sms-service-code" class="data-input mono"
-                placeholder="ot" />
             </div>
             <div class="data-row" id="row-hero-sms-max-price" style="display:none;">
               <span class="data-label">价格区间</span>
@@ -1928,8 +1938,8 @@
   <script src="../mail2925-utils.js"></script>
   <script src="../paypal-utils.js"></script>
   <script src="../gopay-utils.js"></script>
-  <script src="../phone-sms/providers/hero-sms.js"></script>
   <script src="../phone-sms/providers/five-sim.js"></script>
+  <script src="../phone-sms/providers/grizzly-sms.js"></script>
   <script src="../phone-sms/providers/registry.js"></script>
   <script src="../icloud-utils.js"></script>
   <script src="../mail-provider-utils.js"></script>
