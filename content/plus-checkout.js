@@ -288,32 +288,85 @@ function findHostedOpenAiCardPaymentButton() {
   }) || null;
 }
 
+function hasTruthySelectionAttribute(element) {
+  if (!element) {
+    return false;
+  }
+  const truthyAttributes = [
+    'aria-expanded',
+    'aria-pressed',
+    'aria-checked',
+    'aria-selected',
+    'checked',
+    'data-selected',
+    'data-checked',
+  ];
+  if (truthyAttributes.some((attribute) => String(element.getAttribute?.(attribute) || '').toLowerCase() === 'true')) {
+    return true;
+  }
+  const dataState = String(element.getAttribute?.('data-state') || '').toLowerCase();
+  if (['open', 'active', 'checked', 'selected'].includes(dataState)) {
+    return true;
+  }
+  return element.classList?.contains('is-selected')
+    || element.classList?.contains('selected')
+    || element.classList?.contains('active')
+    || element.classList?.contains('checked');
+}
+
 function isHostedOpenAiAccordionControlSelected(button) {
   if (!button) {
     return false;
   }
-  const expanded = String(button.getAttribute?.('aria-expanded') || '').toLowerCase();
-  if (expanded === 'true') {
+  if (hasTruthySelectionAttribute(button)) {
     return true;
   }
-  const pressed = String(button.getAttribute?.('aria-pressed') || '').toLowerCase();
-  if (pressed === 'true') {
-    return true;
+  const container = button.closest?.('[data-state], [aria-selected], [aria-checked], [aria-pressed], [data-selected], [data-checked], .is-selected, .selected, .active, .checked');
+  return hasTruthySelectionAttribute(container);
+}
+
+function findHostedOpenAiPayPalSelectionScope(payPalButton) {
+  if (!payPalButton) {
+    return null;
   }
-  const checked = String(button.getAttribute?.('aria-checked') || '').toLowerCase();
-  if (checked === 'true') {
-    return true;
-  }
-  const container = button.closest?.('[data-state], [aria-selected], .is-selected, .selected, .active');
-  if (!container) {
+  const selectors = [
+    '[data-testid="paypal-accordion-item"]',
+    '[data-testid*="paypal" i][data-testid*="accordion" i]',
+    '.paypal-accordion-item',
+    '[role="radio"]',
+    '[role="tab"]',
+    '[data-state]',
+    '[aria-selected]',
+    '[aria-checked]',
+    '[data-selected]',
+    '[data-checked]',
+  ];
+  return selectors.map((selector) => payPalButton.closest?.(selector)).find(Boolean) || payPalButton;
+}
+
+function hasVisibleHostedOpenAiPayPalPanel(payPalButton = findHostedOpenAiPayPalButton()) {
+  const scope = findHostedOpenAiPayPalSelectionScope(payPalButton);
+  if (!scope) {
     return false;
   }
-  const dataState = String(container.getAttribute?.('data-state') || '').toLowerCase();
-  const ariaSelected = String(container.getAttribute?.('aria-selected') || '').toLowerCase();
-  return dataState === 'open' || dataState === 'active' || ariaSelected === 'true'
-    || container.classList?.contains('is-selected')
-    || container.classList?.contains('selected')
-    || container.classList?.contains('active');
+  const candidateText = getHostedOpenAiPaymentControlText(scope).toLowerCase();
+  const hasPayPalText = /paypal/.test(candidateText) || Boolean(scope.querySelector?.('img[alt*="paypal" i], svg[aria-label*="paypal" i], [data-testid*="paypal" i]'));
+  if (!hasPayPalText) {
+    return false;
+  }
+  const visibleChildren = Array.from(scope.querySelectorAll?.('input, button, iframe, [role="button"], [data-testid]') || [])
+    .filter((element) => element !== payPalButton && isVisibleElement(element));
+  const hasVisiblePayPalContent = visibleChildren.some((element) => {
+    const text = getHostedOpenAiPaymentControlText(element).toLowerCase();
+    const tag = String(element.tagName || '').toLowerCase();
+    const type = String(element.getAttribute?.('type') || '').toLowerCase();
+    const name = String(element.getAttribute?.('name') || '').toLowerCase();
+    const dataTestId = String(element.getAttribute?.('data-testid') || '').toLowerCase();
+    return /paypal|pay pal|phone|email|login|continue|下一页|继续/.test(text)
+      || dataTestId.includes('paypal')
+      || (tag === 'input' && !/card|cc|cvc|exp/.test(`${type} ${name} ${dataTestId}`));
+  });
+  return hasVisiblePayPalContent;
 }
 
 function hasVisibleHostedOpenAiCardFields() {
@@ -333,14 +386,18 @@ function isHostedOpenAiPayPalSelected() {
   if (!payPalButton) {
     return false;
   }
+  const payPalSelectedByState = isHostedOpenAiAccordionControlSelected(payPalButton);
+  const payPalPanelVisible = hasVisibleHostedOpenAiPayPalPanel(payPalButton);
   const cardButton = findHostedOpenAiCardPaymentButton();
-  if (cardButton && isHostedOpenAiAccordionControlSelected(cardButton)) {
+  const cardSelectedByState = cardButton && isHostedOpenAiAccordionControlSelected(cardButton);
+  const cardFieldsVisible = hasVisibleHostedOpenAiCardFields();
+  if ((payPalSelectedByState || payPalPanelVisible) && !cardSelectedByState) {
+    return true;
+  }
+  if (cardSelectedByState || cardFieldsVisible) {
     return false;
   }
-  if (hasVisibleHostedOpenAiCardFields()) {
-    return false;
-  }
-  return isHostedOpenAiAccordionControlSelected(payPalButton);
+  return payPalSelectedByState || payPalPanelVisible;
 }
 
 async function ensureHostedOpenAiPayPalSelected(options = {}) {
