@@ -19,9 +19,11 @@
       isStep6RecoverableResult,
       isStep6SuccessResult,
       getTabId,
+      phoneVerificationHelpers,
       refreshOAuthUrlBeforeStep6,
       reuseOrCreateTab,
       sendToContentScriptResilient,
+      setState,
       startOAuthFlowTimeoutWindow,
       STEP6_MAX_ATTEMPTS,
       throwIfStopped,
@@ -222,6 +224,155 @@
       return visibleStep > 0 ? visibleStep : 7;
     }
 
+    function shouldRunPreOAuthPhoneVerification(state = {}) {
+      if (state?.contributionMode) {
+        return false;
+      }
+      if (!state?.phoneVerificationEnabled) {
+        return false;
+      }
+      const runId = String(state?.runId || state?.activeRunId || '').trim();
+      const completedRunId = String(state?.preOAuthPhoneVerificationRunId || '').trim();
+      if (state?.preOAuthPhoneVerificationCompletedAt && runId && completedRunId === runId) {
+        return false;
+      }
+      return normalizeStep7SignupMethod(state?.resolvedSignupMethod || state?.signupMethod) !== 'phone';
+    }
+
+    function getPreOAuthPhoneSmsApiKeyError(state = {}) {
+      const provider = String(state?.phoneSmsProvider || 'grizzlysms').trim().toLowerCase() || 'grizzlysms';
+      if (provider === 'grizzlysms') {
+        return String(state?.grizzlySmsApiKey || '').trim()
+          ? ''
+          : 'GrizzlySMS API Key 缺失，请先在侧边栏“接码设置”保存 GrizzlySMS API Key。';
+      }
+      if (provider === '5sim') {
+        return String(state?.fiveSimApiKey || state?.heroSmsApiKey || '').trim()
+          ? ''
+          : '5sim API Key 缺失，请先在侧边栏“接码设置”保存 5sim API Key。';
+      }
+      if (provider === 'nexsms') {
+        return String(state?.nexSmsApiKey || state?.heroSmsApiKey || '').trim()
+          ? ''
+          : 'NexSMS API Key 缺失，请先在侧边栏“接码设置”保存 NexSMS API Key。';
+      }
+      return String(state?.heroSmsApiKey || '').trim()
+        ? ''
+        : 'HeroSMS API Key 缺失，请先在侧边栏“接码设置”保存接码 API Key。';
+    }
+
+    function normalizeGrizzlyServiceForLog(value = '') {
+      const normalized = String(value || '').trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '') || 'dr';
+      return ['aichat', 'ai-chat', 'ai_services', 'ai-services'].includes(normalized) ? 'dr' : normalized;
+    }
+
+    function normalizeGrizzlyCountryForLog(value = '') {
+      const normalized = String(value || '').trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '') || 'any';
+      return ['us', 'usa', 'unitedstates', 'united-states'].includes(normalized) ? '187' : normalized;
+    }
+
+    function getPreOAuthPhoneAuthSource() {
+      return 'pre-oauth-phone-auth';
+    }
+
+    function buildPreOAuthPhoneSmsSettingsLog(state = {}) {
+      const provider = String(state?.phoneSmsProvider || 'grizzlysms').trim().toLowerCase() || 'grizzlysms';
+      if (provider === 'grizzlysms') {
+        return `步骤 ${completionStepForState(state)}：当前读取到 GrizzlySMS 设置：apiKey=${String(state?.grizzlySmsApiKey || '').trim() ? '已配置' : '未配置'}，service=${normalizeGrizzlyServiceForLog(state?.grizzlySmsServiceCode)}，country=${normalizeGrizzlyCountryForLog(state?.grizzlySmsCountryId)}，maxPrice=${String(state?.grizzlySmsMaxPrice || '').trim() || '未设置'}。`;
+      }
+      if (provider === '5sim') {
+        return `步骤 ${completionStepForState(state)}：当前读取到 5sim 设置：apiKey=${String(state?.fiveSimApiKey || state?.heroSmsApiKey || '').trim() ? '已配置' : '未配置'}，country=${String(state?.fiveSimCountryId || '').trim() || '未设置'}，product=${String(state?.fiveSimProduct || '').trim() || 'openai'}，maxPrice=${String(state?.fiveSimMaxPrice || '').trim() || '未设置'}。`;
+      }
+      if (provider === 'nexsms') {
+        return `步骤 ${completionStepForState(state)}：当前读取到 NexSMS 设置：apiKey=${String(state?.nexSmsApiKey || state?.heroSmsApiKey || '').trim() ? '已配置' : '未配置'}，service=${String(state?.nexSmsServiceCode || '').trim() || 'ot'}。`;
+      }
+      return `步骤 ${completionStepForState(state)}：当前读取到 HeroSMS 设置：apiKey=${String(state?.heroSmsApiKey || '').trim() ? '已配置' : '未配置'}，country=${String(state?.heroSmsCountryId || '').trim() || '未设置'}，maxPrice=${String(state?.heroSmsMaxPrice || '').trim() || '未设置'}。`;
+    }
+
+    async function readPreOAuthAddPhoneState(completionStep, timeoutMs, source = 'signup-page') {
+      const result = await sendToContentScriptResilient(
+        source,
+        {
+          type: 'GET_LOGIN_AUTH_STATE',
+          step: completionStep,
+          source: 'background',
+          payload: { visibleStep: completionStep },
+        },
+        {
+          timeoutMs,
+          responseTimeoutMs: timeoutMs,
+          retryDelayMs: 700,
+          logMessage: '正在等待 add-phone 页面脚本就绪...',
+          logStep: completionStep,
+          logStepKey: 'oauth-login',
+        }
+      );
+      if (result?.error) {
+        throw new Error(result.error);
+      }
+      return result || {};
+    }
+
+    async function completePreOAuthPhoneVerification(state = {}, completionStep) {
+      if (!shouldRunPreOAuthPhoneVerification(state)) {
+        return;
+      }
+      if (typeof phoneVerificationHelpers?.completePhoneVerificationFlow !== 'function') {
+        throw new Error(`步骤 ${completionStep}：OAuth 前手机号接码流程不可用，接码模块尚未初始化。`);
+      }
+      const apiKeyError = getPreOAuthPhoneSmsApiKeyError(state);
+      if (apiKeyError) {
+        throw new Error(`步骤 ${completionStep}：${apiKeyError}`);
+      }
+      await addLog(buildPreOAuthPhoneSmsSettingsLog(state), 'info', {
+        step: completionStep,
+        stepKey: 'oauth-login',
+      });
+
+      await addLog('OAuth 登录前先打开 add-phone 进行 Codex 接码...', 'info', {
+        step: completionStep,
+        stepKey: 'oauth-login',
+      });
+      if (String(state?.phoneSmsProvider || '').trim().toLowerCase() === 'grizzlysms') {
+        await setState?.({ grizzlySmsServiceCode: 'dr' });
+      }
+      const phoneAuthSource = getPreOAuthPhoneAuthSource();
+      const tabId = await reuseOrCreateTab(phoneAuthSource, 'https://auth.openai.com/add-phone', { forceNew: true });
+      const pageState = await readPreOAuthAddPhoneState(completionStep, 45000, phoneAuthSource);
+      if (pageState?.state === 'oauth_consent_page') {
+        await setState?.({
+          preOAuthPhoneVerificationCompletedAt: Date.now(),
+          preOAuthPhoneVerificationRunId: String(state?.runId || state?.activeRunId || '').trim(),
+        });
+        await addLog('OAuth 登录前 add-phone 已被跳过：当前认证页已进入 OAuth 授权页。', 'warn', {
+          step: completionStep,
+          stepKey: 'oauth-login',
+        });
+        return;
+      }
+      if (pageState?.state !== 'add_phone_page' && pageState?.state !== 'phone_verification_page') {
+        throw new Error(`步骤 ${completionStep}：OAuth 前接码只处理 add-phone / phone-verification，当前状态：${pageState?.state || 'unknown'}。URL: ${pageState?.url || ''}`.trim());
+      }
+
+      const result = await phoneVerificationHelpers.completePhoneVerificationFlow(tabId, pageState, {
+        step: completionStep,
+        visibleStep: completionStep,
+        source: phoneAuthSource,
+      });
+      const latestPhoneState = typeof getState === 'function'
+        ? await getState().catch(() => ({}))
+        : {};
+      await setState?.({
+        preOAuthPhoneVerificationCompletedAt: Date.now(),
+        preOAuthPhoneVerificationRunId: String(state?.runId || state?.activeRunId || '').trim(),
+        preOAuthPhoneVerifiedPhoneNumber: result?.phoneNumber || latestPhoneState?.phoneNumber || '',
+      });
+      await addLog('OAuth 登录前 Codex 接码已完成，稍等后继续刷新 OAuth 登录地址。', 'ok', {
+        step: completionStep,
+        stepKey: 'oauth-login',
+      });
+    }
+
     async function completeStep7PostLoginPhoneHandoff(state = {}, err, completionStep) {
       if (normalizeStep7SignupMethod(state?.resolvedSignupMethod || state?.signupMethod) === 'phone') {
         throw new Error(
@@ -272,6 +423,8 @@
 
       let attempt = 0;
       let lastError = null;
+
+      await completePreOAuthPhoneVerification(initialState, completionStep);
 
       while (attempt < STEP6_MAX_ATTEMPTS) {
         throwIfStopped();

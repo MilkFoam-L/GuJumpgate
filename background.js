@@ -1194,6 +1194,9 @@ const DEFAULT_STATE = {
   cpaManagementOrigin: null, // CPA 管理接口 origin。
   sub2apiSessionId: null, // SUB2API OpenAI Auth 会话 ID。
   sub2apiOAuthState: null, // SUB2API OpenAI Auth state。
+  preOAuthPhoneVerificationCompletedAt: null, // OAuth 登录前 add-phone 接码完成时间。
+  preOAuthPhoneVerifiedPhoneNumber: '', // OAuth 登录前已绑定的手机号。
+  preOAuthPhoneVerificationRunId: '', // OAuth 登录前 add-phone 接码完成所属运行 ID。
   sub2apiGroupId: null, // SUB2API 目标分组 ID。
   sub2apiGroupIds: [], // SUB2API 多目标分组 ID。
   sub2apiDraftName: null, // SUB2API 本轮预生成的账号名称。
@@ -1699,6 +1702,19 @@ function normalizePhoneSmsProviderOrder(value = [], fallbackOrder = []) {
 
   return normalized.slice(0, DEFAULT_PHONE_SMS_PROVIDER_ORDER.length);
 }
+
+function normalizeGrizzlySmsServiceCodeForState(value = '') {
+  const normalized = String(value || '').trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '') || DEFAULT_GRIZZLY_SMS_SERVICE_CODE;
+  return ['aichat', 'ai-chat', 'ai_services', 'ai-services'].includes(normalized)
+    ? DEFAULT_GRIZZLY_SMS_SERVICE_CODE
+    : normalized;
+}
+
+function normalizeGrizzlySmsCountryIdForState(value = '') {
+  const normalized = String(value || '').trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '') || DEFAULT_GRIZZLY_SMS_COUNTRY_ID;
+  return ['us', 'usa', 'unitedstates', 'united-states'].includes(normalized) ? '187' : normalized;
+}
+
 function normalizeSignupMethod(value = '') {
   return String(value || '').trim().toLowerCase() === 'phone'
     ? 'phone'
@@ -3397,9 +3413,9 @@ function normalizePersistentSettingValue(key, value) {
     case 'grizzlySmsApiKey':
       return String(value || '');
     case 'grizzlySmsServiceCode':
-      return String(value || '').trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '') || DEFAULT_GRIZZLY_SMS_SERVICE_CODE;
+      return normalizeGrizzlySmsServiceCodeForState(value);
     case 'grizzlySmsCountryId':
-      return String(value || '').trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '') || DEFAULT_GRIZZLY_SMS_COUNTRY_ID;
+      return normalizeGrizzlySmsCountryIdForState(value);
     case 'grizzlySmsCountryLabel':
       return String(value || '').trim() || DEFAULT_GRIZZLY_SMS_COUNTRY_LABEL;
     case 'grizzlySmsCountryFallback':
@@ -9254,6 +9270,7 @@ function getSourceLabel(source) {
   }
   const labels = {
     'openai-auth': '认证页',
+    'pre-oauth-phone-auth': 'OAuth 前接码页',
     'gmail-mail': 'Gmail 邮箱',
     'sidepanel': '侧边栏',
     'signup-page': '认证页',
@@ -13760,6 +13777,7 @@ const step7Executor = self.MultiPageBackgroundStep7?.createStep7Executor({
   refreshOAuthUrlBeforeStep6,
   reuseOrCreateTab,
   sendToContentScriptResilient,
+  setState,
   startOAuthFlowTimeoutWindow,
   STEP6_MAX_ATTEMPTS,
   throwIfStopped,
@@ -15189,6 +15207,7 @@ async function ensureStep8VerificationPageReady(options = {}) {
     pageState.state === 'verification_page'
     || pageState.state === 'oauth_consent_page'
     || pageState.state === 'logged_in_home'
+    || (options.allowPhoneVerificationPage && pageState.state === 'add_phone_page')
     || (options.allowPhoneVerificationPage && pageState.state === 'phone_verification_page')
     || (options.allowAddEmailPage && pageState.state === 'add_email_page')
   ) {
@@ -15268,6 +15287,7 @@ async function ensureStep8VerificationPageReady(options = {}) {
       if (
         pageState.state === 'verification_page'
         || pageState.state === 'oauth_consent_page'
+        || (options.allowPhoneVerificationPage && pageState.state === 'add_phone_page')
         || (options.allowPhoneVerificationPage && pageState.state === 'phone_verification_page')
         || (options.allowAddEmailPage && pageState.state === 'add_email_page')
       ) {
@@ -15466,9 +15486,10 @@ async function shouldDeferStep9CallbackTimeout(details = {}) {
 
 async function ensureStep8SignupPageReady(tabId, options = {}) {
   const visibleStep = Math.floor(Number(options.visibleStep || options.logStep || options.step) || 0);
-  await ensureContentScriptReadyOnTab('signup-page', tabId, {
+  const source = String(options.source || options.contentSource || 'signup-page').trim() || 'signup-page';
+  await ensureContentScriptReadyOnTab(source, tabId, {
     inject: SIGNUP_PAGE_INJECT_FILES,
-    injectSource: 'signup-page',
+    injectSource: source,
     timeoutMs: options.timeoutMs ?? 15000,
     retryDelayMs: options.retryDelayMs ?? 600,
     logMessage: options.logMessage || '',

@@ -15,6 +15,15 @@
       driverId: 'content/signup-page',
       cleanupScopes: ['oauth-localhost-callback'],
     },
+    'pre-oauth-phone-auth': {
+      flowId: 'openai',
+      kind: 'flow-page',
+      label: 'OAuth 前接码页',
+      readyPolicy: 'allow-child-frame',
+      family: 'pre-oauth-phone-auth-family',
+      driverId: 'content/signup-page',
+      cleanupScopes: [],
+    },
     chatgpt: {
       flowId: 'openai',
       kind: 'flow-entry',
@@ -348,6 +357,9 @@
       switch (canonical) {
         case 'openai-auth':
           return isSignupPageHost(candidate.hostname) || isSignupEntryHost(candidate.hostname);
+        case 'pre-oauth-phone-auth':
+          return isSignupPageHost(candidate.hostname)
+            && /^\/(?:add-phone|phone-verification)(?:[/?#]|$)/i.test(candidate.pathname || '');
         case 'chatgpt':
           return isSignupEntryHost(candidate.hostname);
         case 'duck-mail':

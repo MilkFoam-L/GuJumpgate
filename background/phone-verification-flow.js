@@ -117,6 +117,7 @@
     const activationPriceHintsByKey = new Map();
     let activePhoneVerificationLogStep = null;
     let activePhoneVerificationLogStepKey = null;
+    let activePhoneVerificationContentSource = 'signup-page';
 
     function normalizeLogStep(value) {
       const step = Math.floor(Number(value) || 0);
@@ -125,6 +126,10 @@
 
     function getActivePhoneVerificationVisibleStep(fallback = 9) {
       return normalizeLogStep(activePhoneVerificationLogStep) || fallback;
+    }
+
+    function getActivePhoneVerificationContentSource() {
+      return String(activePhoneVerificationContentSource || '').trim() || 'signup-page';
     }
 
     function normalizePhoneVerificationLogMessage(message) {
@@ -1075,6 +1080,9 @@
       }
       if (/failed\s+to\s+acquire\s+(?:a\s+)?phone(?:\s+number|\s+activation)?/i.test(text)) {
         return '获取手机号失败';
+      }
+      if (/服务代码无效|BAD_ACTION|WRONG_SERVICE|unsupported service|invalid service/i.test(text)) {
+        return text;
       }
       if (/no\s+numbers\s+available\s+across|no\s+free\s+phones|numbers?\s+not\s+found|no\s+numbers\s+within|暂无可用号码|均无可用号码|无可用号码|\bNO_NUMBERS\b/i.test(text)) {
         return formatPhoneSmsApiFailureReason(text);
@@ -4478,6 +4486,7 @@
 
     async function readPhonePageState(tabId, timeoutMs = 10000) {
       const visibleStep = normalizeLogStep(activePhoneVerificationLogStep) || 9;
+      const contentSource = getActivePhoneVerificationContentSource();
       const deadlineMs = Math.max(1, Math.floor(Number(timeoutMs) || 0));
       let timeoutId = null;
       const timeoutPromise = new Promise((_, reject) => {
@@ -4491,8 +4500,9 @@
           logMessage: '步骤 9：等待认证页脚本恢复后继续手机号验证。',
           visibleStep,
           logStepKey: 'phone-verification',
+          source: contentSource,
         });
-        const result = await sendToContentScriptResilient('signup-page', {
+        const result = await sendToContentScriptResilient(contentSource, {
           type: 'STEP8_GET_STATE',
           source: 'background',
           payload: { visibleStep },
@@ -4585,10 +4595,11 @@
       const state = await getState();
       const countryConfig = resolveCountryConfigFromActivation(activation, state);
       const visibleStep = normalizeLogStep(activePhoneVerificationLogStep) || 9;
+      const contentSource = getActivePhoneVerificationContentSource();
       const timeoutMs = typeof getOAuthFlowStepTimeoutMs === 'function'
         ? await getOAuthFlowStepTimeoutMs(30000, { step: visibleStep, actionLabel: '提交添加手机号' })
         : 30000;
-      const result = await sendToContentScriptResilient('signup-page', {
+      const result = await sendToContentScriptResilient(contentSource, {
         type: 'SUBMIT_PHONE_NUMBER',
         source: 'background',
         payload: {
@@ -4613,6 +4624,7 @@
 
     async function submitPhoneVerificationCode(tabId, code) {
       const visibleStep = normalizeLogStep(activePhoneVerificationLogStep) || 9;
+      const contentSource = getActivePhoneVerificationContentSource();
       const signupProfile = (
         typeof generateRandomName === 'function'
         && typeof generateRandomBirthday === 'function'
@@ -4635,7 +4647,7 @@
       const timeoutMs = typeof getOAuthFlowStepTimeoutMs === 'function'
         ? await getOAuthFlowStepTimeoutMs(45000, { step: visibleStep, actionLabel: '提交手机验证码' })
         : 45000;
-      const result = await sendToContentScriptResilient('signup-page', {
+      const result = await sendToContentScriptResilient(contentSource, {
         type: 'SUBMIT_PHONE_VERIFICATION_CODE',
         source: 'background',
         payload: {
@@ -4665,10 +4677,11 @@
 
     async function resendPhoneVerificationCode(tabId, options = {}) {
       const visibleStep = normalizeLogStep(activePhoneVerificationLogStep) || 9;
+      const contentSource = getActivePhoneVerificationContentSource();
       const timeoutMs = typeof getOAuthFlowStepTimeoutMs === 'function'
         ? await getOAuthFlowStepTimeoutMs(65000, { step: visibleStep, actionLabel: 'resend phone verification code' })
         : 65000;
-      const result = await sendToContentScriptResilient('signup-page', {
+      const result = await sendToContentScriptResilient(contentSource, {
         type: 'RESEND_PHONE_VERIFICATION_CODE',
         source: 'background',
         payload: options || {},
@@ -4743,10 +4756,11 @@
 
     async function returnToAddPhone(tabId) {
       const visibleStep = normalizeLogStep(activePhoneVerificationLogStep) || 9;
+      const contentSource = getActivePhoneVerificationContentSource();
       const timeoutMs = typeof getOAuthFlowStepTimeoutMs === 'function'
         ? await getOAuthFlowStepTimeoutMs(30000, { step: visibleStep, actionLabel: 'return to add-phone page' })
         : 30000;
-      const result = await sendToContentScriptResilient('signup-page', {
+      const result = await sendToContentScriptResilient(contentSource, {
         type: 'RETURN_TO_ADD_PHONE',
         source: 'background',
         payload: {},
@@ -4774,8 +4788,9 @@
         };
       }
       const visibleStep = normalizeLogStep(activePhoneVerificationLogStep) || 9;
+      const contentSource = getActivePhoneVerificationContentSource();
       try {
-        const result = await sendToContentScriptResilient('signup-page', {
+        const result = await sendToContentScriptResilient(contentSource, {
           type: 'CHECK_PHONE_RESEND_ERROR',
           source: 'background',
           payload: { visibleStep },
@@ -6263,8 +6278,10 @@
     async function completePhoneVerificationFlow(tabId, initialPageState = null, options = {}) {
       const previousLogStep = activePhoneVerificationLogStep;
       const previousLogStepKey = activePhoneVerificationLogStepKey;
+      const previousContentSource = activePhoneVerificationContentSource;
       activePhoneVerificationLogStep = normalizeLogStep(options.visibleStep || options.step) || 9;
       activePhoneVerificationLogStepKey = 'phone-verification';
+      activePhoneVerificationContentSource = String(options.source || options.contentSource || 'signup-page').trim() || 'signup-page';
       let state = await getState();
       let activation = normalizeActivation(state[PHONE_ACTIVATION_STATE_KEY]);
       let pageState = initialPageState || await readPhonePageState(tabId);
@@ -7065,6 +7082,7 @@
       } finally {
         activePhoneVerificationLogStep = previousLogStep;
         activePhoneVerificationLogStepKey = previousLogStepKey;
+        activePhoneVerificationContentSource = previousContentSource;
       }
     }
 

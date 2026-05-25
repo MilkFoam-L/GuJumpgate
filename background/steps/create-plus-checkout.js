@@ -1608,7 +1608,7 @@ function FindProxyForURL(url, host) {
       if (!successTab?.url || !isPaymentsSuccessUrl(successTab.url)) {
         throw new Error('步骤 6：hosted checkout 已离开 PayPal，但长时间未回到 ChatGPT 支付成功页。');
       }
-      await addLog('步骤 6：hosted checkout 已回到 ChatGPT 支付成功页，等待扩展继续后续 OAuth 流程。', 'ok');
+      await addLog('步骤 6：hosted checkout 已回到 ChatGPT 支付成功页，等待扩展转接码并继续后续 OAuth 流程。', 'ok');
       return successTab;
     }
 
@@ -1781,14 +1781,14 @@ function FindProxyForURL(url, host) {
         throw new Error('步骤 6：hosted checkout 提交后长时间未跳转到 PayPal 或 ChatGPT 支付成功页。');
       }
       if (isPaymentsSuccessUrl(transitionUrl)) {
-        await addLog('步骤 6：hosted checkout 在提交后已直接进入 ChatGPT 支付成功页。', 'ok');
+        await addLog('步骤 6：hosted checkout 在提交后已直接进入 ChatGPT 支付成功页，准备转接码。', 'ok');
         await completeNodeFromBackground('plus-checkout-create', completionPayload);
         return;
       }
 
       await addLog('步骤 6：hosted checkout 已跳转到 PayPal，准备继续 guest/card 流自动化。', 'info');
       await runHostedCheckoutPayPalFlow(tabId, guestProfile);
-      await addLog('步骤 6：hosted checkout 支付链路已完成，准备进入下一步。', 'ok');
+      await addLog('步骤 6：hosted checkout 支付链路已完成，准备转接码。', 'ok');
       await completeNodeFromBackground('plus-checkout-create', completionPayload);
     }
 

@@ -5038,11 +5038,13 @@ function normalizeFiveSimProductValue(value = '') {
 }
 
 function normalizeGrizzlySmsServiceCodeValue(value = '') {
-  return String(value || '').trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '') || 'dr';
+  const normalized = String(value || '').trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '') || 'dr';
+  return ['aichat', 'ai-chat', 'ai_services', 'ai-services'].includes(normalized) ? 'dr' : normalized;
 }
 
 function normalizeGrizzlySmsCountryIdValue(value = '') {
-  return String(value || '').trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '') || 'any';
+  const normalized = String(value || '').trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '') || 'any';
+  return ['us', 'usa', 'unitedstates', 'united-states'].includes(normalized) ? '187' : normalized;
 }
 
 function normalizeNexSmsCountryIdValue(value, fallback = 0) {

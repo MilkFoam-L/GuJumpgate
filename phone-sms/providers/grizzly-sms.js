@@ -11,11 +11,19 @@
   const DEFAULT_REQUEST_TIMEOUT_MS = 20000;
 
   function normalizeGrizzlySmsServiceCode(value = '', fallback = DEFAULT_SERVICE_CODE) {
-    return String(value || '').trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '') || fallback;
+    const normalized = String(value || '').trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '') || fallback;
+    if (['aichat', 'ai-chat', 'ai_services', 'ai-services'].includes(normalized)) {
+      return DEFAULT_SERVICE_CODE;
+    }
+    return normalized;
   }
 
   function normalizeGrizzlySmsCountryId(value = '', fallback = DEFAULT_COUNTRY_ID) {
-    return String(value || '').trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '') || fallback;
+    const normalized = String(value || '').trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '') || fallback;
+    if (['us', 'usa', 'unitedstates', 'united-states'].includes(normalized)) {
+      return '187';
+    }
+    return normalized;
   }
 
   function normalizeGrizzlySmsCountryLabel(value = '', fallback = DEFAULT_COUNTRY_LABEL) {
@@ -100,6 +108,7 @@
       countryId: normalizeGrizzlySmsCountryId(state.grizzlySmsCountryId),
       maxPrice: normalizeGrizzlySmsMaxPrice(state.grizzlySmsMaxPrice),
       fetchImpl: deps.fetchImpl || (typeof fetch === 'function' ? fetch.bind(globalThis) : null),
+      addLog: typeof deps.addLog === 'function' ? deps.addLog : null,
       requestTimeoutMs: deps.requestTimeoutMs || DEFAULT_REQUEST_TIMEOUT_MS,
     };
   }
@@ -166,25 +175,39 @@
     const config = resolveConfig(state, deps);
     const service = config.serviceCode;
     for (const country of resolveCountryCandidates(state)) {
+      const countryId = normalizeGrizzlySmsCountryId(country.id);
+      if (config.addLog) {
+        await config.addLog(
+          `步骤 9：GrizzlySMS 正在获取手机号（service=${service}, country=${countryId}, maxPrice=${config.maxPrice || '未设置'}）。`,
+          'info'
+        );
+      }
       const payload = await fetchPayload(config, {
         action: 'getNumber',
         service,
-        country: normalizeGrizzlySmsCountryId(country.id),
+        country: countryId,
         maxPrice: config.maxPrice,
       }, 'GrizzlySMS 获取手机号');
       const activation = normalizeActivation(payload, {
         serviceCode: service,
-        countryId: country.id,
+        countryId,
         countryLabel: country.label,
       });
       if (activation) return activation;
       const text = describePayload(payload);
-      if (/NO_NUMBERS|NO_BALANCE|BAD_KEY|WRONG_SERVICE|BANNED/i.test(text)) {
+      if (/BAD_ACTION|WRONG_SERVICE/i.test(text)) {
+        throw new Error(`GrizzlySMS 服务代码无效或不支持：${service}（${text}）`);
+      }
+      if (/NO_NUMBERS|NO_BALANCE|BAD_KEY|BANNED/i.test(text)) {
         if (/NO_NUMBERS/i.test(text)) continue;
         throw new Error(`GrizzlySMS 获取手机号失败：${text}`);
       }
     }
-    throw new Error('GrizzlySMS 暂无可用号码。');
+    const attemptedCountries = resolveCountryCandidates(state)
+      .map((country) => normalizeGrizzlySmsCountryId(country.id))
+      .filter(Boolean)
+      .join(', ');
+    throw new Error(`GrizzlySMS 暂无可用号码（service=${service}, countries=${attemptedCountries || 'none'}）。`);
   }
 
   async function pollActivationCode(state = {}, activation, options = {}, deps = {}) {
@@ -243,6 +266,7 @@
   function createProvider(deps = {}) {
     const providerDeps = {
       fetchImpl: deps.fetchImpl,
+      addLog: deps.addLog,
       sleepWithStop: deps.sleepWithStop,
       throwIfStopped: deps.throwIfStopped,
       requestTimeoutMs: deps.requestTimeoutMs || DEFAULT_REQUEST_TIMEOUT_MS,
