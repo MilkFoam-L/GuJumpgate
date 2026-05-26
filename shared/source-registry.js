@@ -359,7 +359,7 @@
           return isSignupPageHost(candidate.hostname) || isSignupEntryHost(candidate.hostname);
         case 'pre-oauth-phone-auth':
           return isSignupPageHost(candidate.hostname)
-            && /^\/(?:add-phone|phone-verification)(?:[/?#]|$)/i.test(candidate.pathname || '');
+            && /^\/(?:add-phone|phone-verification|contact-verification)(?:[/?#]|$)/i.test(candidate.pathname || '');
         case 'chatgpt':
           return isSignupEntryHost(candidate.hostname);
         case 'duck-mail':
@@ -420,7 +420,10 @@
 
       const normalizedHostname = String(hostname || '').toLowerCase();
       const normalizedUrl = String(url || '');
+      const parsed = parseUrlSafely(normalizedUrl);
+      const pathname = String(parsed?.pathname || '');
 
+      if (isSignupPageHost(normalizedHostname) && /^\/(?:add-phone|phone-verification|contact-verification)(?:[/?#]|$)/i.test(pathname)) return 'openai-auth';
       if (isSignupPageHost(normalizedHostname)) return 'openai-auth';
       if (normalizedHostname === 'mail.qq.com' || normalizedHostname === 'wx.mail.qq.com') return 'qq-mail';
       if (is163MailHost(normalizedHostname)) return 'mail-163';

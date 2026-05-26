@@ -2781,6 +2781,9 @@ const VERIFICATION_PAGE_PATTERN = /检查您的收件箱|输入我们刚刚向|�
 const OAUTH_CONSENT_PAGE_PATTERN = /使用\s*ChatGPT\s*登录到\s*Codex|sign\s+in\s+to\s+codex(?:\s+with\s+chatgpt)?|login\s+to\s+codex|log\s+in\s+to\s+codex|authorize|授权/i;
 const OAUTH_CONSENT_FORM_SELECTOR = 'form[action*="/sign-in-with-chatgpt/" i][action*="/consent" i]';
 const CONTINUE_ACTION_PATTERN = /继续|continue/i;
+const PASSKEY_ENROLL_PATH_PATTERN = /\/create-account-enroll-passkey(?:[/?#]|$)/i;
+const PASSKEY_ENROLL_PAGE_PATTERN = /create\s+your\s+account\s+with\s+a\s+passkey|add\s+passkey|passkey|通行密钥|安全密钥/i;
+const PASSKEY_SKIP_ACTION_PATTERN = /^(?:skip|跳过|稍后|以后再说|not\s+now|maybe\s+later)$/i;
 const ADD_PHONE_PAGE_PATTERN = /add[\s-]*(?:a\s+)?phone|添加(?:手机|手机号|电话号码)|绑定(?:手机|手机号|电话号码)|验证(?:你的|您)?(?:手机|手机号|电话号码)|需要(?:手机|手机号|电话号码)|提供(?:手机|手机号|电话号码)|provide\s+(?:a\s+)?phone\s+number|phone\s+number\s+(?:required|verification)|verify\s+(?:your\s+)?phone|confirm\s+(?:your\s+)?phone/i;
 const ADD_EMAIL_PAGE_PATTERN = /add[\s-]*email|添加(?:电子邮件|邮箱)|要求提供(?:电子邮件|邮箱)地址|提供(?:电子邮件|邮箱)地址|provide\s+(?:an?\s+)?email\s+address|email\s+address\s+required/i;
 const STEP5_SUBMIT_ERROR_PATTERN = /无法根据该信息创建帐户|请重试|unable\s+to\s+create\s+(?:your\s+)?account|couldn'?t\s+create\s+(?:your\s+)?account|something\s+went\s+wrong|invalid\s+(?:birthday|birth|date)|生日|出生日期/i;
@@ -3056,7 +3059,35 @@ function getOAuthConsentForm() {
   return document.querySelector(OAUTH_CONSENT_FORM_SELECTOR);
 }
 
+function isPasskeyEnrollPage() {
+  const pathAndUrl = `${location.pathname || ''} ${location.href || ''}`;
+  if (PASSKEY_ENROLL_PATH_PATTERN.test(pathAndUrl)) {
+    return true;
+  }
+  const pageText = getPageTextSnapshot();
+  return PASSKEY_ENROLL_PAGE_PATTERN.test(pageText)
+    && /\bskip\b|跳过|稍后|以后再说|not\s+now|maybe\s+later/i.test(pageText);
+}
+
+function findPasskeySkipButton() {
+  if (!isPasskeyEnrollPage()) {
+    return null;
+  }
+  const candidates = document.querySelectorAll('button, a, [role="button"], input[type="button"], input[type="submit"]');
+  return Array.from(candidates).find((el) => {
+    if (!isVisibleElement(el)) return false;
+    if (!isActionEnabled(el)) return false;
+    const text = getActionText(el);
+    return PASSKEY_SKIP_ACTION_PATTERN.test(text);
+  }) || null;
+}
+
 function getPrimaryContinueButton() {
+  const passkeySkipButton = findPasskeySkipButton();
+  if (passkeySkipButton) {
+    return passkeySkipButton;
+  }
+
   const consentForm = getOAuthConsentForm();
   if (consentForm) {
     const formButtons = Array.from(
@@ -3096,6 +3127,10 @@ function getPrimaryContinueButton() {
 }
 
 function isOAuthConsentPage() {
+  if (isPasskeyEnrollPage()) {
+    return false;
+  }
+
   const pageText = getPageTextSnapshot();
   if (OAUTH_CONSENT_PAGE_PATTERN.test(pageText)) {
     return true;
@@ -3128,14 +3163,25 @@ function isVerificationPageStillVisible() {
 
 function isAddPhonePageReady() {
   const path = `${location.pathname || ''} ${location.href || ''}`;
-  if (/\/add-phone(?:[/?#]|$)/i.test(path)) return true;
+  if (/\/(?:add-phone|contact-verification)(?:[/?#]|$)/i.test(path)) return true;
 
-  const addPhoneForm = document.querySelector('form[action*="/add-phone" i]');
+  const addPhoneForm = document.querySelector('form[action*="/add-phone" i], form[action*="/contact-verification" i]');
   if (addPhoneForm && isVisibleElement(addPhoneForm)) {
     return true;
   }
 
-  return ADD_PHONE_PAGE_PATTERN.test(getPageTextSnapshot());
+  const pageText = getPageTextSnapshot();
+  const phoneInput = getSignupPhoneInput() || getLoginPhoneInput();
+  const hiddenPhoneInput = document.querySelector('input[name="phoneNumber"], input[name*="phone" i][type="hidden"]');
+  const phoneSubmitButton = Array.from(document.querySelectorAll('button[type="submit"], input[type="submit"], button, [role="button"]'))
+    .find((el) => {
+      if (!isVisibleElement(el)) return false;
+      const text = getActionText(el);
+      return /continue|next|submit|verify|add|继续|下一步|提交|验证|添加/i.test(text);
+    });
+
+  return ADD_PHONE_PAGE_PATTERN.test(pageText)
+    && Boolean(phoneInput || hiddenPhoneInput || phoneSubmitButton);
 }
 
 function isAddEmailPageReady() {
@@ -6374,12 +6420,12 @@ async function submitAddEmailAndContinue(payload = {}) {
 
 async function step8_findAndClick(payload = {}) {
   const visibleStep = Math.floor(Number(payload?.visibleStep) || 0) || 9;
-  log('正在查找 OAuth 同意页的“继续”按钮...', 'info', { step: visibleStep, stepKey: 'confirm-oauth' });
+  log('正在查找 OAuth/Passkey 后续按钮...', 'info', { step: visibleStep, stepKey: 'confirm-oauth' });
 
   const continueBtn = await prepareStep8ContinueButton();
 
   const rect = getSerializableRect(continueBtn);
-  log('已找到“继续”按钮并准备好调试器点击坐标。', 'info', { step: visibleStep, stepKey: 'confirm-oauth' });
+  log('已找到 OAuth/Passkey 后续按钮并准备好调试器点击坐标。', 'info', { step: visibleStep, stepKey: 'confirm-oauth' });
   return {
     rect,
     buttonText: (continueBtn.textContent || '').trim(),
@@ -6394,6 +6440,8 @@ function getStep8State() {
     url: location.href,
     consentPage: isOAuthConsentPage(),
     consentReady: isStep8Ready(),
+    passkeyEnrollPage: isPasskeyEnrollPage(),
+    passkeySkipReady: Boolean(findPasskeySkipButton()),
     verificationPage: isVerificationPageStillVisible(),
     addPhonePage: isAddPhonePageReady(),
     addEmailPage: isAddEmailPageReady(),
@@ -6430,10 +6478,11 @@ async function step8_triggerContinue(payload = {}) {
 
   switch (strategy) {
     case 'requestSubmit':
-      if (!form || typeof form.requestSubmit !== 'function') {
-        throw new Error('“继续”按钮当前不在可提交的 form 中，无法使用 requestSubmit。URL: ' + location.href);
+      if (form && typeof form.requestSubmit === 'function') {
+        form.requestSubmit(continueBtn);
+      } else {
+        continueBtn.click();
       }
-      form.requestSubmit(continueBtn);
       break;
     case 'nativeClick':
       continueBtn.click();
@@ -6478,6 +6527,10 @@ async function findContinueButton(timeout = 10000) {
     if (isAddEmailPageReady()) {
       throw new Error('当前页面已进入添加邮箱页面，不是 OAuth 授权同意页。URL: ' + location.href);
     }
+    const passkeySkipButton = findPasskeySkipButton();
+    if (passkeySkipButton) {
+      return passkeySkipButton;
+    }
     const button = getPrimaryContinueButton();
     if (button && isStep8Ready()) {
       return button;
@@ -6485,7 +6538,7 @@ async function findContinueButton(timeout = 10000) {
     await sleep(150);
   }
 
-  throw new Error('在 OAuth 同意页未找到“继续”按钮，或页面尚未进入授权同意状态。URL: ' + location.href);
+  throw new Error('在 OAuth 同意页或 Passkey 创建页未找到可继续/跳过的按钮。URL: ' + location.href);
 }
 
 async function waitForButtonEnabled(button, timeout = 8000) {

@@ -718,7 +718,9 @@
 
     async function reuseOrCreateTab(source, url, options = {}) {
       if (options.forceNew) {
-        await closeConflictingTabsForSource(source, url);
+        if (!options.preserveConflictingTabs) {
+          await closeConflictingTabsForSource(source, url);
+        }
         const tab = await createAutomationTab({ url, active: true }, options);
 
         if (options.inject) {

@@ -272,7 +272,27 @@
     }
 
     function getPreOAuthPhoneAuthSource() {
-      return 'pre-oauth-phone-auth';
+      return 'signup-page';
+    }
+
+    async function resolvePreOAuthPhoneEntryUrl(state = {}, completionStep) {
+      const existingOAuthUrl = String(state?.oauthUrl || '').trim();
+      if (existingOAuthUrl) {
+        return existingOAuthUrl;
+      }
+
+      if (typeof refreshOAuthUrlBeforeStep6 === 'function') {
+        const refreshedOAuthUrl = String(await refreshOAuthUrlBeforeStep6(state) || '').trim();
+        if (refreshedOAuthUrl) {
+          await addLog('OAuth 前接码：未发现现成 OAuth 链接，已重新生成 SUB2API OAuth 链接。', 'info', {
+            step: completionStep,
+            stepKey: 'oauth-login',
+          });
+          return refreshedOAuthUrl;
+        }
+      }
+
+      throw new Error(`步骤 ${completionStep}：缺少 SUB2API OAuth 链接，无法通过 OAuth 会话进入 add-phone。请重新执行步骤 1 生成 OAuth 链接。`);
     }
 
     function buildPreOAuthPhoneSmsSettingsLog(state = {}) {
@@ -329,15 +349,19 @@
         stepKey: 'oauth-login',
       });
 
-      await addLog('OAuth 登录前先打开 add-phone 进行 Codex 接码...', 'info', {
+      await addLog('OAuth 登录前先通过 SUB2API OAuth 链接进入 add-phone 进行 Codex 接码...', 'info', {
         step: completionStep,
         stepKey: 'oauth-login',
       });
       if (String(state?.phoneSmsProvider || '').trim().toLowerCase() === 'grizzlysms') {
         await setState?.({ grizzlySmsServiceCode: 'dr' });
       }
+      const phoneEntryUrl = await resolvePreOAuthPhoneEntryUrl(state, completionStep);
       const phoneAuthSource = getPreOAuthPhoneAuthSource();
-      const tabId = await reuseOrCreateTab(phoneAuthSource, 'https://auth.openai.com/add-phone', { forceNew: true });
+      const tabId = await reuseOrCreateTab(phoneAuthSource, phoneEntryUrl, {
+        forceNew: true,
+        preserveConflictingTabs: true,
+      });
       const pageState = await readPreOAuthAddPhoneState(completionStep, 45000, phoneAuthSource);
       if (pageState?.state === 'oauth_consent_page') {
         await setState?.({
