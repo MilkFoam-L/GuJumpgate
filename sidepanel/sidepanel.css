@@ -3327,7 +3327,8 @@ header {
   font-size: 11px;
 }
 
-#log-area {
+#log-area,
+#diagnostics-area {
   background: var(--bg-surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
@@ -3341,10 +3342,18 @@ header {
   box-shadow: var(--shadow-sm);
 }
 
-#log-area::-webkit-scrollbar { width: 5px; }
-#log-area::-webkit-scrollbar-track { background: transparent; }
-#log-area::-webkit-scrollbar-thumb { background: var(--bg-elevated); border-radius: 4px; }
-#log-area::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+#diagnostics-area {
+  height: 140px;
+}
+
+#log-area::-webkit-scrollbar,
+#diagnostics-area::-webkit-scrollbar { width: 5px; }
+#log-area::-webkit-scrollbar-track,
+#diagnostics-area::-webkit-scrollbar-track { background: transparent; }
+#log-area::-webkit-scrollbar-thumb,
+#diagnostics-area::-webkit-scrollbar-thumb { background: var(--bg-elevated); border-radius: 4px; }
+#log-area::-webkit-scrollbar-thumb:hover,
+#diagnostics-area::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
 
 .log-line { padding: 2.5px 0; }
 .log-line + .log-line { border-top: 1px solid var(--border-subtle); }

@@ -14,6 +14,8 @@ const PAYPAL_HOSTED_STAGE_GENERIC_ERROR = 'generic_error';
 const PAYPAL_HOSTED_STAGE_UNKNOWN = 'unknown';
 const PAYPAL_HOSTED_HERMES_AUTORUN_SENTINEL = '__MULTIPAGE_PAYPAL_HOSTED_HERMES_AUTORUN__';
 const PAYPAL_HOSTED_GUEST_SUBMIT_SENTINEL = '__MULTIPAGE_PAYPAL_HOSTED_GUEST_SUBMIT__';
+const PAYPAL_HOSTED_ACCOUNT_EMAIL_REFRESH_SENTINEL = '__MULTIPAGE_PAYPAL_HOSTED_ACCOUNT_EMAIL_REFRESH__';
+const PAYPAL_HOSTED_ACCOUNT_EMAIL_MAX_RETRIES = 3;
 
 if (document.documentElement.getAttribute(PAYPAL_FLOW_LISTENER_SENTINEL) !== '1') {
   document.documentElement.setAttribute(PAYPAL_FLOW_LISTENER_SENTINEL, '1');
@@ -623,6 +625,65 @@ async function submitHostedPayLogin(payload = {}) {
   };
 }
 
+async function waitForHostedAccountCreateEmailInput(timeoutMs = 12000) {
+  return waitUntil(() => document.getElementById('email') || findEmailInput(), {
+    intervalMs: 250,
+    timeoutMs,
+    timeoutMessage: 'PayPal 创建账户页刷新后未重新出现邮箱输入框。',
+  });
+}
+
+function getHostedAccountCreateAdvancedStage() {
+  const stage = detectPayPalHostedCheckoutStage();
+  return stage !== PAYPAL_HOSTED_STAGE_ACCOUNT_CREATE_EMAIL ? stage : '';
+}
+
+async function clickHostedAccountCreateEmailContinue(email, attemptLabel = '') {
+  const emailInput = document.getElementById('email') || findEmailInput();
+  if (!emailInput) {
+    throw new Error('PayPal 创建账户页未找到邮箱输入框。');
+  }
+  refillPayPalEmailInput(emailInput, email);
+  await sleep(500);
+  removeHostedCaptchaArtifacts();
+  const button = findHostedAccountCreateEmailContinueButton();
+  if (button && isVisibleElement(button) && isEnabledControl(button)) {
+    dispatchHostedGenericClick(button);
+  } else {
+    await clickHostedGenericSubmitButton(0);
+  }
+  if (attemptLabel) {
+    log(`PayPal 创建账户邮箱确认已点击（${attemptLabel}）。`, 'info');
+  }
+}
+
+async function waitForHostedAccountCreateEmailProgress(timeoutMs = 3000) {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    throwIfStopped();
+    removeHostedCaptchaArtifacts();
+    const advancedStage = getHostedAccountCreateAdvancedStage();
+    if (advancedStage) {
+      return advancedStage;
+    }
+    await sleep(250);
+  }
+  return '';
+}
+
+async function reloadHostedAccountCreateEmailPage() {
+  const previousReadyState = document.readyState;
+  location.reload();
+  await sleep(1500);
+  await waitUntil(() => document.readyState === 'loading' || document.readyState !== previousReadyState, {
+    intervalMs: 100,
+    timeoutMs: 3000,
+    timeoutMessage: 'PayPal 创建账户页刷新未开始。',
+  }).catch(() => null);
+  await waitForDocumentComplete();
+  await waitForHostedAccountCreateEmailInput();
+}
+
 async function submitHostedAccountCreateEmail(payload = {}) {
   await waitForDocumentComplete();
   removeHostedCaptchaArtifacts();
@@ -630,26 +691,53 @@ async function submitHostedAccountCreateEmail(payload = {}) {
   if (!email) {
     throw new Error('PayPal 创建账户页缺少邮箱。');
   }
-  const emailInput = document.getElementById('email') || findEmailInput();
-  if (!emailInput) {
-    throw new Error('PayPal 创建账户页未找到邮箱输入框。');
-  }
+  await waitForHostedAccountCreateEmailInput(8000);
   await sleep(1000);
-  refillPayPalEmailInput(emailInput, email);
-  await sleep(500);
-  const button = findHostedAccountCreateEmailContinueButton();
-  if (button && isVisibleElement(button) && isEnabledControl(button)) {
-    dispatchHostedGenericClick(button);
-    await sleep(1000);
-    removeHostedCaptchaArtifacts();
-  } else {
-    await clickHostedGenericSubmitButton(0);
+
+  let retryCount = 0;
+  let advancedStage = '';
+  for (let attempt = 1; attempt <= PAYPAL_HOSTED_ACCOUNT_EMAIL_MAX_RETRIES; attempt += 1) {
+    retryCount = attempt - 1;
+    await clickHostedAccountCreateEmailContinue(email, `${attempt}/${PAYPAL_HOSTED_ACCOUNT_EMAIL_MAX_RETRIES}`);
+    advancedStage = await waitForHostedAccountCreateEmailProgress(3000);
+    if (advancedStage) {
+      break;
+    }
+    if (attempt < PAYPAL_HOSTED_ACCOUNT_EMAIL_MAX_RETRIES) {
+      log(`PayPal 创建账户邮箱确认无响应，重试 ${attempt}/${PAYPAL_HOSTED_ACCOUNT_EMAIL_MAX_RETRIES}...`, 'warn');
+    }
   }
+
+  let refreshed = false;
+  if (!advancedStage) {
+    const rootScope = typeof window !== 'undefined' ? window : globalThis;
+    if (rootScope[PAYPAL_HOSTED_ACCOUNT_EMAIL_REFRESH_SENTINEL]) {
+      throw new Error('PayPal 创建账户邮箱确认重试并刷新后仍无响应。');
+    }
+    rootScope[PAYPAL_HOSTED_ACCOUNT_EMAIL_REFRESH_SENTINEL] = true;
+    refreshed = true;
+    log('PayPal 创建账户邮箱确认重试 3 次仍无响应，刷新页面后重新填写邮箱。', 'warn');
+    try {
+      await reloadHostedAccountCreateEmailPage();
+      await clickHostedAccountCreateEmailContinue(email, '刷新后');
+      advancedStage = await waitForHostedAccountCreateEmailProgress(5000);
+    } finally {
+      rootScope[PAYPAL_HOSTED_ACCOUNT_EMAIL_REFRESH_SENTINEL] = false;
+    }
+    if (!advancedStage) {
+      throw new Error('PayPal 创建账户页刷新并重新填写邮箱后仍未进入下一步。');
+    }
+  }
+
+  removeHostedCaptchaArtifacts();
   return {
     stage: PAYPAL_HOSTED_STAGE_ACCOUNT_CREATE_EMAIL,
     submitted: true,
     generatedEmail: email,
     nextExpected: 'guest_checkout_or_verification',
+    retryCount,
+    refreshed,
+    advancedStage,
   };
 }
 

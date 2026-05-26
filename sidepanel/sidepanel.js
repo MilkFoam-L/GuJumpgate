@@ -11,6 +11,8 @@ const STATUS_ICONS = {
 };
 
 const logArea = document.getElementById('log-area');
+const diagnosticsArea = document.getElementById('diagnostics-area');
+const btnClearDiagnostics = document.getElementById('btn-clear-diagnostics');
 const btnOpenAccountRecords = document.getElementById('btn-open-account-records');
 const accountRecordsOverlay = document.getElementById('account-records-overlay');
 const accountRecordsMeta = document.getElementById('account-records-meta');
@@ -12200,26 +12202,50 @@ function updateStatusDisplay(state) {
   }
 }
 
-function appendLog(entry) {
-  const time = new Date(entry.timestamp).toLocaleTimeString('zh-CN', {
+function isDiagnosticLogEntry(entry = {}) {
+  const message = String(entry?.message || '');
+  return Boolean(entry?.diagnostics || entry?.diagnostic)
+    || /诊断：|自动诊断|诊断运行|代理测试诊断|diagnostics?/i.test(message);
+}
+
+function createLogLine(entry, options = {}) {
+  const time = new Date(entry.timestamp || Date.now()).toLocaleTimeString('zh-CN', {
     hour12: false,
     timeZone: DISPLAY_TIMEZONE,
   });
-  const levelLabel = LOG_LEVEL_LABELS[entry.level] || entry.level;
+  const level = entry.level || 'info';
+  const levelLabel = LOG_LEVEL_LABELS[level] || level;
   const line = document.createElement('div');
-  line.className = `log-line log-${entry.level}`;
+  line.className = `${options.diagnostic ? 'diagnostic-line ' : ''}log-line log-${level}`;
 
   const normalizedStep = Math.floor(Number(entry.step) || 0);
   const stepNum = normalizedStep > 0 ? String(normalizedStep) : null;
 
   let html = `<span class="log-time">${time}</span> `;
-  html += `<span class="log-level log-level-${entry.level}">${levelLabel}</span> `;
+  html += `<span class="log-level log-level-${level}">${levelLabel}</span> `;
   if (stepNum) {
     html += `<span class="log-step-tag step-${stepNum}">步${stepNum}</span>`;
   }
   html += `<span class="log-msg">${escapeHtml(entry.message)}</span>`;
-
   line.innerHTML = html;
+  return line;
+}
+
+function appendDiagnostic(entry) {
+  if (!diagnosticsArea) {
+    return;
+  }
+  const line = createLogLine(entry, { diagnostic: true });
+  diagnosticsArea.appendChild(line);
+  diagnosticsArea.scrollTop = diagnosticsArea.scrollHeight;
+}
+
+function appendLog(entry) {
+  if (isDiagnosticLogEntry(entry)) {
+    appendDiagnostic(entry);
+    return;
+  }
+  const line = createLogLine(entry);
   logArea.appendChild(line);
   logArea.scrollTop = logArea.scrollHeight;
 }
@@ -13879,6 +13905,7 @@ btnReset.addEventListener('click', async () => {
   displayStatus.textContent = '就绪';
   statusBar.className = 'status-bar';
   logArea.innerHTML = '';
+  if (diagnosticsArea) diagnosticsArea.innerHTML = '';
   resetIcloudManager();
   document.querySelectorAll('.step-row').forEach(row => row.className = 'step-row');
   document.querySelectorAll('.step-status').forEach(el => el.textContent = '');
@@ -13898,6 +13925,10 @@ btnReset.addEventListener('click', async () => {
 // Clear log
 btnClearLog.addEventListener('click', () => {
   logArea.innerHTML = '';
+});
+
+btnClearDiagnostics?.addEventListener('click', () => {
+  if (diagnosticsArea) diagnosticsArea.innerHTML = '';
 });
 
 btnExportCurrentSessionCpaJson?.addEventListener('click', () => {
@@ -15592,8 +15623,15 @@ async function handlePlusCheckoutConversionProxyTest() {
       response?.proxyDisplayName ? `代理：${response.proxyDisplayName}` : '',
       response?.exitEndpoint ? `出口探测：${response.exitEndpoint}` : '',
       response?.targetEndpoint ? `目标连通：${response.targetEndpoint}` : '',
-      response?.diagnostics ? `诊断：${response.diagnostics}` : '',
     ].filter(Boolean);
+    if (response?.diagnostics) {
+      appendDiagnostic({
+        timestamp: Date.now(),
+        level: 'info',
+        message: `支付转换代理诊断：${response.diagnostics}`,
+        diagnostics: response.diagnostics,
+      });
+    }
     setPlusCheckoutConversionProxyTestResult(`可用: ${exitSummary}`, {
       status: 'success',
       detail: detailParts.join(' | ') || `代理测试通过：${exitSummary}`,
@@ -16357,6 +16395,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       displayStatus.textContent = '就绪';
       statusBar.className = 'status-bar';
       logArea.innerHTML = '';
+      if (diagnosticsArea) diagnosticsArea.innerHTML = '';
       resetIcloudManager();
       resetLuckmailManager();
       resetCustomEmailPoolManager();
